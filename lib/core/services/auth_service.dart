@@ -1,10 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
+import 'cache_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+  );
 
   // Obtenir l'utilisateur actuel
   User? get currentUser => _auth.currentUser;
@@ -76,24 +81,105 @@ class AuthService {
     }
   }
 
+  // Connexion avec Google
+  Future<UserModel?> signInWithGoogle() async {
+    try {
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      UserCredential result = await _auth.signInWithCredential(credential);
+      User? user = result.user;
+      
+      if (user != null) {
+        DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+        
+        if (!doc.exists) {
+          UserModel newUser = UserModel(
+            id: user.uid,
+            email: user.email ?? '',
+            name: user.displayName ?? 'Utilisateur',
+            latitude: 0.0,
+            longitude: 0.0,
+            timezone: 'UTC',
+            notificationSettings: {
+              'enabled': true,
+              'intensity': 'medium',
+              'sound': 'default',
+              'vibration': true,
+            },
+          );
+          
+          await _firestore.collection('users').doc(user.uid).set(newUser.toJson());
+          return newUser;
+        } else {
+          return UserModel.fromJson(doc.data() as Map<String, dynamic>);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Erreur Google Sign-In: $e');
+      return null;
+    }
+  }
+
+  // Accès invité (sans authentification)
+  Future<bool> continueAsGuest() async {
+    try {
+      UserCredential result = await _auth.signInAnonymously();
+      return result.user != null;
+    } catch (e) {
+      print('Erreur accès invité: $e');
+      return false;
+    }
+  }
+
+  // Vérifier si l'utilisateur est un invité
+  bool get isGuestUser => _auth.currentUser?.isAnonymous ?? false;
+
   // Déconnexion
   Future<void> signOut() async {
+    await _googleSignIn.signOut();
     await _auth.signOut();
   }
 
-  // Méthode à ajouter dans la classe AuthService
+  // Méthode optimisée avec cache
   Future<UserModel?> getUserData(String userId) async {
     try {
+      // Vérifier d'abord le cache
+      final cachedUser = await CacheService.instance.getUserData(userId);
+      if (cachedUser != null) {
+        return UserModel.fromJson(cachedUser);
+      }
+
+      // Si pas en cache, récupérer depuis Firestore
       DocumentSnapshot doc = await _firestore.collection('users').doc(userId).get();
 
       if (doc.exists) {
-        return UserModel.fromJson(doc.data() as Map<String, dynamic>);
+        final userData = doc.data() as Map<String, dynamic>;
+        final userModel = UserModel.fromJson(userData);
+        
+        // Mettre en cache pour les prochaines fois
+        await CacheService.instance.putUserData(userId, userData);
+        
+        return userModel;
       }
       return null;
     } catch (e) {
       print('Erreur lors de la récupération des données utilisateur: $e');
       return null;
     }
+  }
+
+  // Invalider le cache utilisateur lors de modifications
+  Future<void> _invalidateUserCache(String userId) async {
+    await CacheService.instance.remove('user_data_$userId');
   }
 
 }

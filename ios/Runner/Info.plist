@@ -45,5 +45,10 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Permissions pour la géolocalisation -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TaqwaTime a besoin d'accéder à votre position pour calculer les horaires de prière précis selon votre localisation.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>TaqwaTime a besoin d'accéder à votre position pour calculer les horaires de prière précis selon votre localisation.</string>
 </dict>
 </plist>

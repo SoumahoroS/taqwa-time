@@ -11,27 +11,7 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-
-    // Utiliser StreamBuilder pour écouter les changements d'état d'authentification
-    return StreamBuilder<User?>(
-      stream: authService.authStateChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.active) {
-          final user = snapshot.data;
-          if (user == null) {
-            return LoginScreen();
-          }
-          return HomeScreen();
-        }
-
-        // Afficher un écran de chargement pendant l'initialisation
-        return Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
-      },
-    );
+    // Accès direct à l'écran d'accueil sans vérification d'authentification
+    return HomeScreen();
   }
 }

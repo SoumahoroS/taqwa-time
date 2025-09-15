@@ -79,6 +79,22 @@ class NotificationService {
     await _scheduleNextReminder(id, title);
   }
 
+  // Obtenir le compteur de rappels actuel (méthode publique)
+  Future<int> getReminderCount(int id) async {
+    return await _getReminderCount(id);
+  }
+
+  // Arrêter tous les rappels pour une notification (méthode publique)
+  Future<void> stopAllReminders(int id) async {
+    _stopReminderTimer(id);
+    await _resetReminderCount(id);
+  }
+
+  // Générer un ID de notification à partir d'un ID de prière (méthode publique)
+  int generateNotificationId(String prayerId) {
+    return _generateNotificationId(prayerId);
+  }
+
   // Programmer toutes les notifications pour une prière
   Future<void> schedulePrayerNotificationSequence({
     required String prayerId,
@@ -203,9 +219,14 @@ class NotificationService {
         // Ajouter un timer pour le cas où l'application est ouverte
         final timerDuration = preparationTime.difference(now);
         if (timerDuration.inSeconds > 0) {
-          final timer = Timer(timerDuration, () {
-            // Si l'application est en premier plan, on pourrait afficher un rappel ici
-            print('Préparation: $prayerName dans $minutes minutes');
+          Timer? timer;
+          timer = Timer(timerDuration, () {
+            // Check if the timer is still active before executing
+            if (timer != null && _preparationTimers.containsKey(notificationId) && 
+                _preparationTimers[notificationId]!.contains(timer)) {
+              // Si l'application est en premier plan, on pourrait afficher un rappel ici
+              print('Préparation: $prayerName dans $minutes minutes');
+            }
           });
 
           _preparationTimers[notificationId]!.add(timer);
@@ -271,6 +292,9 @@ class NotificationService {
     _stopReminderTimer(id); // Arrêter tout timer existant
 
     _reminderTimers[id] = Timer(Duration(minutes: delayMinutes), () async {
+      // Check if the timer is still active and notification service is available
+      if (!_reminderTimers.containsKey(id)) return;
+      
       // Vérifier si la notification a été traitée
       bool notificationExists = await _checkIfNotificationExists(id);
 

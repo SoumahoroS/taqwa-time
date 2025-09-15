@@ -8,6 +8,8 @@ import 'app.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/prayer_time_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/cache_service.dart';
+import 'core/services/performance_service.dart';
 import 'core/repositories/prayer_repository.dart';
 
 // Cette variable sera accessible dans toute l'application
@@ -19,21 +21,23 @@ Future<void> onNotificationActionReceived(ReceivedAction receivedAction) async {
   // Traiter les actions de notification
   if (receivedAction.buttonKeyPressed == 'MARK_DONE') {
     // L'utilisateur a marqué la prière comme accomplie
-    print('Prière marquée comme accomplie depuis la notification');
+    print('✅ Prière marquée comme accomplie depuis la notification (main.dart)');
 
     // Si le service de notification global est disponible, réinitialiser le compteur de rappels
-    if (globalNotificationService != null) {
-      // Vous devrez exposer une méthode publique pour réinitialiser le compteur
-      // globalNotificationService.resetReminderCount(receivedAction.id!);
+    if (globalNotificationService != null && receivedAction.id != null) {
+      await globalNotificationService!.resetReminderCount(receivedAction.id!);
+      await globalNotificationService!.cancelNotification(receivedAction.id!);
     }
   } else if (receivedAction.buttonKeyPressed == 'REMIND_LATER') {
     // L'utilisateur a demandé un rappel
-    print('Rappel demandé depuis la notification');
+    print('⏰ Rappel demandé depuis la notification (main.dart)');
 
     // Si le service de notification global est disponible, programmer le prochain rappel
-    if (globalNotificationService != null) {
-      // Vous devrez exposer une méthode publique pour programmer le prochain rappel
-      // globalNotificationService.scheduleNextReminder(receivedAction.id!, receivedAction.title ?? 'Rappel de prière');
+    if (globalNotificationService != null && receivedAction.id != null) {
+      await globalNotificationService!.scheduleNextReminder(
+        receivedAction.id!,
+        receivedAction.title ?? 'Rappel de prière'
+      );
     }
   }
 }
@@ -52,6 +56,10 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialiser les services de cache et performance
+  await CacheService.instance.init();
+  await PerformanceService().initialize();
 
   // Initialiser et stocker le service de notification globalement
   globalNotificationService = NotificationService();

@@ -36,13 +36,27 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
     _prayerTimeService = Provider.of<PrayerTimeService>(context, listen: false);
     _prayerRepository = Provider.of<PrayerRepository>(context, listen: false);
     _notificationService = Provider.of<NotificationService>(context, listen: false);
-    _userId = Provider.of<AuthService>(context, listen: false).currentUser!.uid;
+    
+    final authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Vérifier si l'utilisateur est connecté
+    if (authService.currentUser == null) {
+      // Rediriger vers login si pas connecté
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      });
+      return;
+    }
+    
+    _userId = authService.currentUser!.uid;
 
     _initialize();
 
     // Mettre à jour l'interface toutes les minutes
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      _updateNextPrayer();
+      if (mounted) {
+        _updateNextPrayer();
+      }
     });
   }
 
@@ -211,6 +225,7 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
   Future<void> _markPrayerCompleted(PrayerModel prayer) async {
     final now = DateTime.now();
     final scheduledTime = prayer.scheduledTime;
+    final minutesSinceScheduled = now.difference(scheduledTime).inMinutes;
 
     // Vérifier si la prière est future
     if (now.isBefore(scheduledTime)) {
@@ -223,8 +238,32 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
       return;
     }
 
-    // Déterminer si la prière est à l'heure ou en retard
-    final status = now.difference(scheduledTime).inMinutes < 15
+    // Vérifier si la fenêtre de marquage est dépassée (60 minutes max)
+    if (minutesSinceScheduled > 60) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Délai dépassé. Impossible de marquer cette prière comme accomplie.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Vérifier si c'est le bon moment pour marquer la prière (minimum 2 minutes après l'heure)
+    if (minutesSinceScheduled < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Vous pouvez marquer cette prière dans ${2 - minutesSinceScheduled} minute(s)',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Déterminer le statut selon le délai
+    final status = minutesSinceScheduled <= 15
         ? PrayerStatus.onTime
         : PrayerStatus.late;
 
@@ -267,34 +306,103 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Mes Prières'),
+        title: const Text(
+          'Mes Prières',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 22,
+            color: Colors.white,
+          ),
+        ),
         backgroundColor: AppColors.primary,
+        elevation: 0,
+        centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              setState(() {
-                _isLoading = true;
-              });
-              await _initialize();
-              setState(() {
-                _isLoading = false;
-              });
-            },
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () async {
+                setState(() {
+                  _isLoading = true;
+                });
+                await _initialize();
+                setState(() {
+                  _isLoading = false;
+                });
+              },
+            ),
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Chargement des prières...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppColors.secondary.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            )
           : _todayPrayers == null || _prayerTimes == null
-          ? const Center(child: Text('Erreur lors du chargement des prières'))
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: AppColors.alert.withOpacity(0.6),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Erreur lors du chargement',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Veuillez réessayer',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.secondary.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            )
           : SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildNextPrayerCard(),
-            _buildTodaysPrayersCard(),
-          ],
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
+              _buildNextPrayerCard(),
+              const SizedBox(height: 8),
+              _buildTodaysPrayersCard(),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -315,34 +423,68 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
       orElse: () => _todayPrayers!.first,
     );
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary,
+            AppColors.primary.withOpacity(0.8),
+            AppColors.secondary,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text(
-              'Prochaine Prière',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.secondary,
-              ),
+            Row(
+              children: [
+                Icon(
+                  Icons.access_time,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Prochaine Prière',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Container(
-              width: 180,
-              height: 180,
+              width: 200,
+              height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.15),
                 border: Border.all(
-                  color: AppColors.primary,
-                  width: 4,
+                  color: Colors.white.withOpacity(0.3),
+                  width: 2,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Center(
                 child: Column(
@@ -351,71 +493,141 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
                     Text(
                       prayerName,
                       style: const TextStyle(
-                        fontSize: 28,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                        color: Colors.white,
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       formattedTime,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withOpacity(0.9),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    CountdownTimer(
-                      duration: timeUntil,
-                      onFinished: () => _updateNextPrayer(),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: CountdownTimer(
+                        duration: timeUntil,
+                        onFinished: () => _updateNextPrayer(),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () async {
-                await _notificationService.createReminderNotification(
-                  id: 12345,
-                  title: 'Test de notification',
-                  body: 'Cette notification est un test',
-                  intensityLevel: 2,
-                );
-              },
-              child: Text('Tester notification'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _markPrayerCompleted(currentPrayer);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Marquer comme accomplie',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white,
-                ),
-
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                _scheduleNotifications();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Notifications reprogrammées'),
-                    backgroundColor: Colors.blue,
-
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        _markPrayerCompleted(currentPrayer);
+                      },
+                      icon: const Icon(
+                        Icons.check_circle,
+                        size: 20,
+                      ),
+                      label: const Text(
+                        'Marquer accomplie',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppColors.primary,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
                   ),
-                );
-              },
-              child: const Text('Reprogrammer les rappels'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    await _notificationService.createReminderNotification(
+                      id: 12345,
+                      title: 'Test de notification',
+                      body: 'Cette notification est un test',
+                      intensityLevel: 2,
+                    );
+                  },
+                  icon: Icon(
+                    Icons.notifications_active,
+                    size: 16,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                  label: Text(
+                    'Test',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    _scheduleNotifications();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Notifications reprogrammées'),
+                        backgroundColor: AppColors.accent,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                  },
+                  icon: Icon(
+                    Icons.schedule,
+                    size: 16,
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                  label: Text(
+                    'Programmer',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -424,26 +636,67 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
   }
 
   Widget _buildTodaysPrayersCard() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Prières du Jour',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.secondary,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.today,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Prières du Jour',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.secondary,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_todayPrayers!.where((p) => p.status == PrayerStatus.onTime || p.status == PrayerStatus.late).length}/${_todayPrayers!.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             ..._todayPrayers!.map((prayer) => _buildPrayerItem(prayer)).toList(),
           ],
         ),
@@ -459,60 +712,210 @@ class _PrayerTrackingScreenState extends State<PrayerTrackingScreen> {
     final now = DateTime.now();
     final isFuture = prayer.scheduledTime.isAfter(now);
 
-    return ListTile(
-      title: Text(
-        prayerName,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
+    // Déterminer la couleur en fonction du statut et du temps
+    Color getBackgroundColor() {
+      if (prayer.status == PrayerStatus.onTime) {
+        return AppColors.primary.withOpacity(0.1);
+      } else if (prayer.status == PrayerStatus.late) {
+        return AppColors.accent.withOpacity(0.1);
+      } else if (prayer.status == PrayerStatus.missed) {
+        return AppColors.alert.withOpacity(0.1);
+      } else if (!isFuture) {
+        return AppColors.alert.withOpacity(0.05);
+      }
+      return Colors.grey.withOpacity(0.05);
+    }
+
+    Icon getLeadingIcon() {
+      switch (prayer.status) {
+        case PrayerStatus.onTime:
+          return Icon(Icons.check_circle, color: AppColors.primary, size: 28);
+        case PrayerStatus.late:
+          return Icon(Icons.access_time, color: AppColors.accent, size: 28);
+        case PrayerStatus.missed:
+          return Icon(Icons.cancel, color: AppColors.alert, size: 28);
+        default:
+          if (isFuture) {
+            return Icon(Icons.schedule, color: Colors.grey[600], size: 28);
+          } else {
+            return Icon(Icons.radio_button_unchecked, color: AppColors.alert, size: 28);
+          }
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: getBackgroundColor(),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.1),
+          width: 1,
         ),
       ),
-      subtitle: Text(formattedTime),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          PrayerStatusIndicator(status: prayer.status),
-          if (prayer.status == PrayerStatus.notYet || prayer.status == PrayerStatus.missed)
-            IconButton(
-              icon: const Icon(Icons.check_circle_outline),
-              color: AppColors.primary,
-              onPressed: isFuture
-                  ? () {
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: getLeadingIcon(),
+        ),
+        title: Text(
+          prayerName,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            color: AppColors.secondary,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 14,
+                  color: Colors.grey[600],
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  formattedTime,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            if (!isFuture && prayer.status == PrayerStatus.notYet)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'En retard',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.alert,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (prayer.status == PrayerStatus.notYet || prayer.status == PrayerStatus.missed)
+              _buildMarkCompletedButton(prayer, isFuture),
+            if (prayer.status == PrayerStatus.notYet && !isFuture) ...[
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.alert.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.alert.withOpacity(0.3)),
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.notifications_active, color: AppColors.alert, size: 18),
+                  onPressed: () async {
+                    // Générer l'ID de notification pour cette prière
+                    final notificationId = int.parse(
+                        prayer.id.hashCode.toString().substring(0, 8).replaceAll('-', '1')
+                    );
+
+                    // Créer un rappel immédiat avec une intensité moyenne
+                    await _notificationService.createReminderNotification(
+                      id: notificationId,
+                      title: 'Rappel urgent: ${_prayerTimeService.getPrayerName(prayer.type)}',
+                      body: 'Cette prière n\'a pas encore été accomplie !',
+                      intensityLevel: 2,
+                    );
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Rappel envoyé'),
+                        backgroundColor: AppColors.accent,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMarkCompletedButton(PrayerModel prayer, bool isFuture) {
+    final now = DateTime.now();
+    final minutesSinceScheduled = now.difference(prayer.scheduledTime).inMinutes;
+    
+    // Vérifier si le bouton doit être désactivé
+    bool isButtonDisabled = false;
+    String? disabledReason;
+    
+    if (isFuture) {
+      isButtonDisabled = true;
+      disabledReason = 'Prière future';
+    } else if (minutesSinceScheduled < 2) {
+      isButtonDisabled = true;
+      disabledReason = 'Attendez ${2 - minutesSinceScheduled} min';
+    } else if (minutesSinceScheduled > 60) {
+      isButtonDisabled = true;
+      disabledReason = 'Délai dépassé';
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isButtonDisabled 
+            ? Colors.grey.withOpacity(0.3)
+            : AppColors.primary,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: isButtonDisabled ? [] : [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(
+          Icons.check, 
+          color: isButtonDisabled ? Colors.grey : Colors.white, 
+          size: 20
+        ),
+        onPressed: isButtonDisabled 
+            ? () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Impossible de marquer une prière future comme accomplie'),
+                  SnackBar(
+                    content: Text(disabledReason!),
                     backgroundColor: Colors.orange,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 );
               }
-                  : () => _markPrayerCompleted(prayer),
-            ),
-          if (prayer.status == PrayerStatus.notYet && !isFuture)
-            IconButton(
-              icon: const Icon(Icons.alarm),
-              color: AppColors.alert,
-              onPressed: () async {
-                // Générer l'ID de notification pour cette prière
-                final notificationId = int.parse(
-                    prayer.id.hashCode.toString().substring(0, 8).replaceAll('-', '1')
-                );
-
-                // Créer un rappel immédiat avec une intensité moyenne
-                await _notificationService.createReminderNotification(
-                  id: notificationId,
-                  title: 'Rappel urgent: ${_prayerTimeService.getPrayerName(prayer.type)}',
-                  body: 'Cette prière n\'a pas encore été accomplie !',
-                  intensityLevel: 2,
-                );
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Rappel envoyé'),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-            ),
-        ],
+            : () => _markPrayerCompleted(prayer),
       ),
     );
   }

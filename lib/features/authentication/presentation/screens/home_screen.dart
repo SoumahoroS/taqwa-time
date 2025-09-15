@@ -51,8 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Mettre à jour l'interface toutes les minutes
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      _updateNextPrayer();
-      _loadTodayPrayers();
+      if (mounted) {
+        _updateNextPrayer();
+        _loadTodayPrayers();
+      }
     });
   }
 
@@ -119,6 +121,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadTodayPrayers() async {
     if (_authService.currentUser == null) return;
+    
+    // Si l'utilisateur est un invité, ne pas charger les prières personnalisées
+    if (_authService.isGuestUser) return;
 
     final userId = _authService.currentUser!.uid;
     final today = DateTime.now();
@@ -161,6 +166,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadPrayerStats() async {
     if (_authService.currentUser == null) return;
+    
+    // Si l'utilisateur est un invité, ne pas charger les statistiques personnalisées
+    if (_authService.isGuestUser) return;
 
     final userId = _authService.currentUser!.uid;
 
@@ -222,81 +230,233 @@ class _HomeScreenState extends State<HomeScreen> {
     return statuses;
   }
 
+  void _navigateToStatistics() {
+    if (_authService.currentUser == null) {
+      // Utilisateur non connecté - rediriger vers login
+      Navigator.pushNamed(context, '/login');
+    } else {
+      // Utilisateur connecté - accéder aux statistiques
+      Navigator.pushNamed(context, '/statistics');
+    }
+  }
+
+  void _navigateToPrayerTracking() {
+    if (_authService.currentUser == null) {
+      // Utilisateur non connecté - rediriger vers login
+      Navigator.pushNamed(context, '/login');
+    } else {
+      // Utilisateur connecté - accéder au suivi des prières
+      Navigator.pushNamed(context, '/prayer-tracking');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('TaqwaTime'),
-        backgroundColor: AppColors.primary,
+        title: const Text(
+          'TaqwaTime',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _initialize();
-            },
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () {
+                _initialize();
+              },
+            ),
           ),
         ],
       ),
       drawer: TaqwaTimeDrawer(currentUser: _currentUser),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-          children: [
-            // En-tête de bienvenue avec le nom d'utilisateur
-            if (_currentUser != null)
-              Container(
-                padding: const EdgeInsets.all(16),
-                width: double.infinity,
-                color: Colors.grey[100],
-                child: Text(
-                  'Salam, ${_currentUser!.name}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.secondary,
-                  ),
+      body: _isLoading
+          ? Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.primary,
+                    AppColors.primary.withOpacity(0.8),
+                    AppColors.background,
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
                 ),
               ),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            )
+          : Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.primary,
+                    AppColors.primary.withOpacity(0.8),
+                    AppColors.background,
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
+                ),
+              ),
+              child: SafeArea(
                 child: Column(
                   children: [
-                    _buildNextPrayerSection(),
-                    const SizedBox(height: 24),
-                    _buildPerformanceSection(),
-                    const SizedBox(height: 24),
-                    _buildPrayerTimesSection(),
+                    // En-tête moderne avec gradient
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              _authService.isGuestUser ? Icons.person_outline : Icons.person,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Assalamu Alaikum',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _authService.isGuestUser
+                                      ? 'Invité'
+                                      : _currentUser?.name ?? 'Utilisateur',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!_authService.isGuestUser)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.accent,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.accent.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                '${_streak}🔥',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    Expanded(
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(32),
+                            topRight: Radius.circular(32),
+                          ),
+                        ),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+                          child: Column(
+                            children: [
+                              _buildNextPrayerSection(),
+                              const SizedBox(height: 32),
+                              _buildPerformanceSection(),
+                              const SizedBox(height: 32),
+                              _buildPrayerTimesSection(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            BottomNavigation(
-              currentIndex: _currentNavIndex,
-              onTap: (index) {
-                setState(() {
-                  _currentNavIndex = index;
-                });
-                // Navigation basée sur l'index
-                switch (index) {
-                  case 0:
-                  // Déjà sur l'écran d'accueil
-                    break;
-                  case 1:
-                    Navigator.pushNamed(context, '/prayer-tracking');
-                    break;
-                  case 2:
-                    Navigator.pushNamed(context, '/quran');
-                    break;
-                  case 3:
-                    Navigator.pushNamed(context, '/statistics');
-                    break;
-                }
-              },
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
             ),
           ],
+        ),
+        child: SafeArea(
+          child: BottomNavigation(
+            currentIndex: _currentNavIndex,
+            onTap: (index) {
+              setState(() {
+                _currentNavIndex = index;
+              });
+              switch (index) {
+                case 0:
+                  break;
+                case 1:
+                  _navigateToPrayerTracking();
+                  break;
+                case 2:
+                  Navigator.pushNamed(context, '/quran');
+                  break;
+                case 3:
+                  _navigateToStatistics();
+                  break;
+              }
+            },
+          ),
         ),
       ),
     );

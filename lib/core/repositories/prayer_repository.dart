@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/prayer_model.dart';
+import '../services/cache_service.dart';
 
 class PrayerRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -35,6 +36,9 @@ class PrayerRepository {
   // Enregistrer une nouvelle prière
   Future<void> savePrayer(PrayerModel prayer) async {
     await _prayersCollection.doc(prayer.id).set(prayer.toJson());
+    
+    // Invalider le cache des prières et statistiques de l'utilisateur
+    await _invalidatePrayerCache(prayer.userId, prayer.scheduledTime);
   }
 
   // Enregistrer plusieurs prières à la fois
@@ -49,6 +53,21 @@ class PrayerRepository {
     await batch.commit();
   }
 
+  // Obtenir une prière spécifique par son ID
+  Future<PrayerModel?> getPrayerById(String prayerId) async {
+    try {
+      DocumentSnapshot doc = await _prayersCollection.doc(prayerId).get();
+      
+      if (doc.exists) {
+        return PrayerModel.fromJson(doc.data() as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      print("Erreur lors de la récupération de la prière: $e");
+      return null;
+    }
+  }
+
   // Mettre à jour le statut d'une prière
   Future<void> updatePrayerStatus(String prayerId,
       PrayerStatus status,
@@ -59,11 +78,19 @@ class PrayerRepository {
     });
   }
 
-  // Obtenir les statistiques de prière d'un utilisateur
+  // Obtenir les statistiques de prière d'un utilisateur avec cache
   Future<Map<String, dynamic>> getUserPrayerStats(String userId,
       int days) async {
-    final endDate = DateTime.now();
-    final startDate = endDate.subtract(Duration(days: days));
+    try {
+      // Vérifier d'abord le cache
+      final cachedStats = await CacheService.instance.getUserStats(userId);
+      if (cachedStats != null) {
+        return cachedStats;
+      }
+
+      // Si pas en cache, calculer depuis Firestore
+      final endDate = DateTime.now();
+      final startDate = endDate.subtract(Duration(days: days));
 
     final snapshot = await _prayersCollection
         .where('userId', isEqualTo: userId)
@@ -204,22 +231,30 @@ class PrayerRepository {
       punctualityRate = (onTime / (onTime + late)) * 100;
     }
 
-    return {
-      'total': prayers.length,
-      'onTime': onTime,
-      'late': late,
-      'missed': missed,
-      'notYet': notYet,
-      'byType': prayerTypeStats,
-      'currentStreak': currentStreak,
-      'bestStreak': await _getBestStreak(userId),
-      // Récupérer le meilleur streak historique
-      'bestDay': bestDay,
-      'bestDayCount': bestDayCount,
-      'trend': trend,
-      'dailyPercentages': dailyPercentages,
-      'punctualityRate': punctualityRate,
-    };
+      final stats = {
+        'total': prayers.length,
+        'onTime': onTime,
+        'late': late,
+        'missed': missed,
+        'notYet': notYet,
+        'byType': prayerTypeStats.map((key, value) => MapEntry(key.name, value)),
+        'currentStreak': currentStreak,
+        'bestStreak': await _getBestStreak(userId),
+        'bestDay': bestDay,
+        'bestDayCount': bestDayCount,
+        'trend': trend,
+        'dailyPercentages': dailyPercentages,
+        'punctualityRate': punctualityRate,
+      };
+
+      // Mettre en cache les statistiques
+      await CacheService.instance.putUserStats(userId, stats);
+      
+      return stats;
+    } catch (e) {
+      print('Erreur lors du calcul des statistiques: $e');
+      return {};
+    }
   }
 
   // Obtenir le meilleur streak historique de l'utilisateur
@@ -261,6 +296,94 @@ class PrayerRepository {
       }
     } catch (e) {
       print('Erreur lors de la mise à jour du meilleur streak: $e');
+    }
+  }
+
+  // Obtenir l'historique quotidien des prières pour les graphiques
+  Future<List<Map<String, dynamic>>> getDailyPrayerHistory(String userId, int days) async {
+    final endDate = DateTime.now();
+    final startDate = endDate.subtract(Duration(days: days));
+
+    final snapshot = await _prayersCollection
+        .where('userId', isEqualTo: userId)
+        .where('scheduledTime', isGreaterThanOrEqualTo: startDate.toIso8601String())
+        .where('scheduledTime', isLessThan: endDate.toIso8601String())
+        .get();
+
+    final prayers = snapshot.docs
+        .map((doc) => PrayerModel.fromJson(doc.data() as Map<String, dynamic>))
+        .toList();
+
+    // Grouper les prières par jour
+    Map<String, List<PrayerModel>> prayersByDay = {};
+    
+    for (var prayer in prayers) {
+      final date = prayer.scheduledTime;
+      final dayKey = '${date.year}-${date.month}-${date.day}';
+      
+      if (!prayersByDay.containsKey(dayKey)) {
+        prayersByDay[dayKey] = [];
+      }
+      prayersByDay[dayKey]!.add(prayer);
+    }
+
+    // Créer l'historique quotidien
+    List<Map<String, dynamic>> dailyHistory = [];
+    
+    for (int i = 0; i < days; i++) {
+      final date = startDate.add(Duration(days: i));
+      final dayKey = '${date.year}-${date.month}-${date.day}';
+      final dayPrayers = prayersByDay[dayKey] ?? [];
+      
+      final onTime = dayPrayers.where((p) => p.status == PrayerStatus.onTime).length;
+      final late = dayPrayers.where((p) => p.status == PrayerStatus.late).length;
+      final missed = dayPrayers.where((p) => p.status == PrayerStatus.missed).length;
+      final total = dayPrayers.length;
+      
+      // Nom du jour en français
+      final dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+      final dayName = dayNames[date.weekday - 1];
+      
+      dailyHistory.add({
+        'date': date.toIso8601String(),
+        'day': dayName,
+        'total': total > 0 ? total : 5, // 5 prières par jour par défaut
+        'onTime': onTime,
+        'late': late,
+        'missed': missed,
+        'completed': onTime + late,
+      });
+    }
+
+    return dailyHistory;
+  }
+
+  // Méthodes d'invalidation du cache
+  
+  /// Invalide le cache des prières et statistiques pour un utilisateur à une date donnée
+  Future<void> _invalidatePrayerCache(String userId, DateTime date) async {
+    final dateKey = '${date.year}_${date.month}_${date.day}';
+    
+    // Invalider le cache des prières pour cette date
+    await CacheService.instance.remove('prayers_${userId}_$dateKey');
+    
+    // Invalider le cache des statistiques
+    await CacheService.instance.remove('user_stats_$userId');
+  }
+
+  /// Invalide tout le cache d'un utilisateur
+  Future<void> invalidateUserCache(String userId) async {
+    // Utiliser un pattern pour supprimer toutes les entrées de cet utilisateur
+    await CacheService.instance.clear();
+    
+    // Ou plus spécifiquement, on pourrait implémenter une méthode pour supprimer par pattern
+    final keys = [
+      'user_data_$userId',
+      'user_stats_$userId',
+    ];
+    
+    for (final key in keys) {
+      await CacheService.instance.remove(key);
     }
   }
 }

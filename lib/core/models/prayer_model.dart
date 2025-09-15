@@ -41,4 +41,30 @@ class PrayerModel {
       'status': status.name,
     };
   }
+
+  // Méthode pour marquer une prière comme accomplie
+  PrayerModel markAsCompleted({DateTime? completionTime}) {
+    return PrayerModel(
+      id: id,
+      userId: userId,
+      type: type,
+      scheduledTime: scheduledTime,
+      completedTime: completionTime ?? DateTime.now(),
+      status: completionTime != null 
+        ? (completionTime.isAfter(scheduledTime) ? PrayerStatus.late : PrayerStatus.onTime)
+        : PrayerStatus.onTime,
+    );
+  }
+
+  // Méthode pour marquer une prière comme manquée
+  PrayerModel markAsMissed() {
+    return PrayerModel(
+      id: id,
+      userId: userId,
+      type: type,
+      scheduledTime: scheduledTime,
+      completedTime: completedTime,
+      status: PrayerStatus.missed,
+    );
+  }
 }
