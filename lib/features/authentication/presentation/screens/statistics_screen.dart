@@ -364,8 +364,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
   Widget _buildWeeklyChart() {
     if (_dailyHistory == null || _dailyHistory!.isEmpty) {
-      return const SizedBox.shrink();
+      return _buildEmptyChart();
     }
+
+    // Prendre les données selon la période sélectionnée
+    final dataToShow = _selectedPeriod == 0 
+        ? _dailyHistory!.skip(_dailyHistory!.length - 7).toList()  // Semaine: 7 derniers jours
+        : _dailyHistory!.toList(); // Mois: 30 derniers jours
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -383,24 +388,227 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Évolution Hebdomadaire',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.secondary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _selectedPeriod == 0 ? 'Évolution Hebdomadaire' : 'Évolution Mensuelle',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.secondary,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${dataToShow.length} jours',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 120,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: _dailyHistory!
-                  .take(7)
-                  .map((day) => _buildChartBar(day))
-                  .toList(),
+            height: 140,
+            child: _selectedPeriod == 0 
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: dataToShow.map((day) => _buildChartBar(day)).toList(),
+                  )
+                : SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: dataToShow.map((day) => Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        child: _buildChartBar(day, compact: true),
+                      )).toList(),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          _buildChartLegend(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyChart() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 40),
+          Icon(
+            Icons.analytics_outlined,
+            size: 64,
+            color: Colors.grey[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucune donnée disponible',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Commencez à enregistrer vos prières pour voir les statistiques',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _buildLegendItem('100%', AppColors.primary),
+        _buildLegendItem('75%', AppColors.primary.withOpacity(0.8)),
+        _buildLegendItem('50%', AppColors.primary.withOpacity(0.6)),
+        _buildLegendItem('25%', AppColors.primary.withOpacity(0.4)),
+        _buildLegendItem('0%', Colors.grey[300]!),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChartBar(Map<String, dynamic> dayData, {bool compact = false}) {
+    final total = dayData['total'] ?? 5;
+    final onTime = dayData['onTime'] ?? 0;
+    final late = dayData['late'] ?? 0;
+    final completed = onTime + late;
+    final hasData = dayData['hasData'] ?? false;
+    
+    // Validation: s'assurer que completed ne dépasse pas total
+    final validCompleted = completed > total ? total : completed;
+    final percentage = total > 0 ? validCompleted / total : 0.0;
+    final day = dayData['day'] ?? '';
+    
+    // Déterminer la couleur selon le pourcentage et la présence de données
+    Color barColor;
+    if (!hasData) {
+      barColor = Colors.grey[300]!;
+    } else if (percentage >= 0.8) {
+      barColor = AppColors.primary;
+    } else if (percentage >= 0.6) {
+      barColor = AppColors.primary.withOpacity(0.8);
+    } else if (percentage >= 0.4) {
+      barColor = AppColors.primary.withOpacity(0.6);
+    } else if (percentage >= 0.2) {
+      barColor = AppColors.primary.withOpacity(0.4);
+    } else {
+      barColor = AppColors.alert.withOpacity(0.6);
+    }
+    
+    final barWidth = compact ? 8.0 : 24.0;
+    final maxHeight = compact ? 60.0 : 80.0;
+    
+    return GestureDetector(
+      onTap: () => _showDayDetails(dayData),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Tooltip avec pourcentage
+          if (!compact) Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.grey[800],
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              hasData ? '${(percentage * 100).toInt()}%' : 'N/A',
+              style: const TextStyle(
+                fontSize: 8,
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (!compact) const SizedBox(height: 4),
+          
+          // Barre du graphique
+          Container(
+            width: barWidth,
+            height: hasData ? (percentage * maxHeight).clamp(4.0, maxHeight) : 4.0,
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: BorderRadius.circular(compact ? 4 : 12),
+              boxShadow: hasData ? [
+                BoxShadow(
+                  color: barColor.withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ] : null,
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Label du jour
+          Text(
+            compact 
+                ? day.substring(0, 1)
+                : (day.length >= 3 ? day.substring(0, 3) : day.substring(0, 1)),
+            style: TextStyle(
+              fontSize: compact ? 8 : 10,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -408,40 +616,51 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  Widget _buildChartBar(Map<String, dynamic> dayData) {
-    final total = dayData['total'] ?? 5;
-    final completed = (dayData['onTime'] ?? 0) + (dayData['late'] ?? 0);
-    final percentage = total > 0 ? completed / total : 0.0;
-    final day = dayData['day'] ?? '';
+  void _showDayDetails(Map<String, dynamic> dayData) {
+    final hasData = dayData['hasData'] ?? false;
+    if (!hasData) return;
     
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Container(
-          width: 24,
-          height: (percentage * 80).clamp(4.0, 80.0),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                AppColors.primary,
-                AppColors.primary.withOpacity(0.6),
-              ],
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Détails du ${dayData['day']}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Total prières', '${dayData['total']}'),
+            _buildDetailRow('À l\'heure', '${dayData['onTime']}', AppColors.primary),
+            _buildDetailRow('En retard', '${dayData['late']}', AppColors.accent),
+            _buildDetailRow('Manquées', '${dayData['missed']}', AppColors.alert),
+            _buildDetailRow('Taux de réussite', '${dayData['successRate']}%', AppColors.secondary),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, [Color? color]) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color ?? Colors.black,
             ),
-            borderRadius: BorderRadius.circular(12),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          day.substring(0, 1),
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

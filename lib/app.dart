@@ -8,7 +8,7 @@ import 'shared/themes/app_theme.dart';
 import 'core/services/notification_service.dart';
 import 'core/repositories/prayer_repository.dart';
 import 'core/models/prayer_model.dart';
-import 'main.dart' show globalNotificationService;
+import 'main.dart' show globalNotificationService, onNotificationActionReceived;
 
 // Définir cette méthode en dehors de la classe pour qu'elle puisse être utilisée comme une fonction statique
 @pragma('vm:entry-point')
@@ -72,7 +72,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _setupInAppNotificationHandler() async {
     // Cette méthode permet de gérer les notifications lorsque l'application est au premier plan
     AwesomeNotifications().setListeners(
-      onActionReceivedMethod: appActionReceivedMethod,  // Méthode locale définie dans ce fichier
+      onActionReceivedMethod: onNotificationActionReceived,  // Utiliser la méthode globale de main.dart
       onNotificationDisplayedMethod: (receivedNotification) async {
         print("📲 Notification affichée en premier plan: ${receivedNotification.title}");
 

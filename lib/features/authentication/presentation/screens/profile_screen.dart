@@ -550,49 +550,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Intervalle de rappel',
                   '${_userSettings!.reminderInterval} minutes',
                   Icons.schedule,
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildCircularButton(
-                        Icons.remove,
-                        _userSettings!.notificationsEnabled &&
-                                _userSettings!.reminderInterval > 1
-                            ? () {
-                                _updateSetting('reminderInterval',
-                                    _userSettings!.reminderInterval - 1);
-                              }
-                            : null,
-                      ),
-                      const SizedBox(width: 16),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildSmallCircularButton(
+                          Icons.remove,
+                          _userSettings!.notificationsEnabled &&
+                                  _userSettings!.reminderInterval > 1
+                              ? () {
+                                  _updateSetting('reminderInterval',
+                                      _userSettings!.reminderInterval - 1);
+                                }
+                              : null,
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${_userSettings!.reminderInterval}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.secondary,
-                            fontSize: 16,
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${_userSettings!.reminderInterval}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.secondary,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      _buildCircularButton(
-                        Icons.add,
-                        _userSettings!.notificationsEnabled
-                            ? () {
-                                _updateSetting('reminderInterval',
-                                    _userSettings!.reminderInterval + 1);
-                              }
-                            : null,
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        _buildSmallCircularButton(
+                          Icons.add,
+                          _userSettings!.notificationsEnabled
+                              ? () {
+                                  _updateSetting('reminderInterval',
+                                      _userSettings!.reminderInterval + 1);
+                                }
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
                   enabled: _userSettings!.notificationsEnabled,
                 ),
@@ -788,6 +790,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Icon(
               icon,
               size: 18,
+              color: onPressed != null ? Colors.white : Colors.grey[600],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallCircularButton(IconData icon, VoidCallback? onPressed) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: onPressed != null
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primary,
+                  AppColors.secondary,
+                ],
+              )
+            : null,
+        color: onPressed == null ? Colors.grey[300] : null,
+        boxShadow: onPressed != null
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.3),
+                  blurRadius: 6,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(15),
+          onTap: onPressed,
+          child: Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: 14,
               color: onPressed != null ? Colors.white : Colors.grey[600],
             ),
           ),

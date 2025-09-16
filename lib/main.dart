@@ -44,9 +44,7 @@ Future<void> onNotificationActionReceived(ReceivedAction receivedAction) async {
 
 // Fonction pour initialiser les écouteurs d'actions
 void initializeNotificationActionListeners() {
-  AwesomeNotifications().setListeners(
-    onActionReceivedMethod: onNotificationActionReceived,
-  );
+  // Les listeners seront configurés dans app.dart pour éviter la duplication
 }
 
 

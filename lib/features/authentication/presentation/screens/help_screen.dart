@@ -321,10 +321,11 @@ class _HelpScreenState extends State<HelpScreen>
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: color.withOpacity(0.1),
@@ -332,24 +333,26 @@ class _HelpScreenState extends State<HelpScreen>
               child: Icon(
                 icon,
                 color: color,
-                size: 24,
+                size: 20,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               title,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.secondary,
               ),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               description,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: AppColors.secondary.withOpacity(0.6),
               ),
               textAlign: TextAlign.center,

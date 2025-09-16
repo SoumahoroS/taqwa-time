@@ -597,25 +597,29 @@ class _SettingsScreenState extends State<SettingsScreen>
               ],
             ),
           ),
-          DropdownButton<String>(
-            value: value,
-            underline: const SizedBox(),
-            icon: Icon(Icons.keyboard_arrow_down, color: AppColors.primary),
-            items: items.map((item) {
-              return DropdownMenuItem<String>(
-                value: item['value'],
-                child: Text(
-                  item['label']!,
-                  style: const TextStyle(fontSize: 14),
-                ),
-              );
-            }).toList(),
-            onChanged: (newValue) {
-              if (newValue != null) {
-                HapticFeedback.selectionClick();
-                onChanged(newValue);
-              }
-            },
+          Flexible(
+            child: DropdownButton<String>(
+              value: value,
+              underline: const SizedBox(),
+              icon: Icon(Icons.keyboard_arrow_down, color: AppColors.primary),
+              isExpanded: true,
+              items: items.map((item) {
+                return DropdownMenuItem<String>(
+                  value: item['value'],
+                  child: Text(
+                    item['label']!,
+                    style: const TextStyle(fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (newValue) {
+                if (newValue != null) {
+                  HapticFeedback.selectionClick();
+                  onChanged(newValue);
+                }
+              },
+            ),
           ),
         ],
       ),

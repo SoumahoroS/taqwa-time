@@ -158,8 +158,10 @@ class PrayerRepository {
       }
     }
 
-    // Analyser les tendances
+    // Analyser les tendances avec logique améliorée
     List<double> dailyPercentages = [];
+    List<bool> hasDataFlags = [];
+    
     for (int i = 0; i < days; i++) {
       final dayDate = startDate.add(Duration(days: i));
       final dayKey = '${dayDate.year}-${dayDate.month}-${dayDate.day}';
@@ -169,26 +171,20 @@ class PrayerRepository {
         final completed = dayPrayers.where((p) =>
         p.status == PrayerStatus.onTime || p.status == PrayerStatus.late)
             .length;
-        dailyPercentages.add((completed / dayPrayers.length) * 100);
+        final expectedPrayers = _getExpectedPrayersForDate(dayDate);
+        final percentage = expectedPrayers > 0 ? (completed / expectedPrayers) * 100.0 : 0.0;
+        
+        dailyPercentages.add(percentage);
+        hasDataFlags.add(true);
       } else {
-        dailyPercentages.add(0);
+        // Pour les jours sans données, ne pas inclure dans le calcul de tendance
+        dailyPercentages.add(0.0);
+        hasDataFlags.add(false);
       }
     }
 
-    // Calculer la tendance (en hausse, en baisse ou stable)
-    String trend = 'stable';
-    if (dailyPercentages.length > 3) {
-      // Comparer la moyenne des 2 premiers jours avec celle des 2 derniers
-      double firstAvg = (dailyPercentages.take(2).reduce((a, b) => a + b)) / 2;
-      double lastAvg = (dailyPercentages.skip(dailyPercentages.length - 2)
-          .take(2).reduce((a, b) => a + b)) / 2;
-
-      if (lastAvg - firstAvg > 10) {
-        trend = 'up';
-      } else if (firstAvg - lastAvg > 10) {
-        trend = 'down';
-      }
-    }
+    // Calculer la tendance avec régression linéaire simple
+    String trend = _calculateTrend(dailyPercentages, hasDataFlags);
 
     // Calculer le streak actuel
     int currentStreak = 0;
@@ -327,7 +323,7 @@ class PrayerRepository {
       prayersByDay[dayKey]!.add(prayer);
     }
 
-    // Créer l'historique quotidien
+    // Créer l'historique quotidien avec logique améliorée
     List<Map<String, dynamic>> dailyHistory = [];
     
     for (int i = 0; i < days; i++) {
@@ -335,27 +331,68 @@ class PrayerRepository {
       final dayKey = '${date.year}-${date.month}-${date.day}';
       final dayPrayers = prayersByDay[dayKey] ?? [];
       
+      // Calculer les statistiques réelles
       final onTime = dayPrayers.where((p) => p.status == PrayerStatus.onTime).length;
       final late = dayPrayers.where((p) => p.status == PrayerStatus.late).length;
       final missed = dayPrayers.where((p) => p.status == PrayerStatus.missed).length;
-      final total = dayPrayers.length;
+      final notYet = dayPrayers.where((p) => p.status == PrayerStatus.notYet).length;
+      
+      // Logique améliorée pour le total:
+      // - Si des prières existent pour ce jour, utiliser le nombre réel
+      // - Si aucune prière n'existe, calculer selon la logique métier
+      int total;
+      if (dayPrayers.isNotEmpty) {
+        total = dayPrayers.length;
+      } else {
+        // Pour les jours sans données, ne pas assumer 5 prières
+        // Utiliser 0 pour indiquer qu'il n'y a pas de données
+        total = _getExpectedPrayersForDate(date);
+      }
+      
+      final completed = onTime + late;
+      
+      // Validation des données
+      final validCompleted = completed > total ? total : completed;
+      final validMissed = missed > total ? total - validCompleted : missed;
       
       // Nom du jour en français
       final dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
       final dayName = dayNames[date.weekday - 1];
       
+      // Calculer le pourcentage de réussite
+      final successRate = total > 0 ? (validCompleted / total * 100).round() : 0;
+      
+      
       dailyHistory.add({
         'date': date.toIso8601String(),
         'day': dayName,
-        'total': total > 0 ? total : 5, // 5 prières par jour par défaut
+        'total': total,
         'onTime': onTime,
         'late': late,
-        'missed': missed,
-        'completed': onTime + late,
+        'missed': validMissed,
+        'notYet': notYet,
+        'completed': validCompleted,
+        'successRate': successRate,
+        'hasData': dayPrayers.isNotEmpty, // Indicateur de présence de données
       });
     }
 
     return dailyHistory;
+  }
+
+  // Calculer le nombre attendu de prières pour une date donnée
+  int _getExpectedPrayersForDate(DateTime date) {
+    // Si la date est dans le futur, retourner 0
+    if (date.isAfter(DateTime.now())) {
+      return 0;
+    }
+    
+    // Pour les jours passés ou actuels, retourner 5 (nombre standard de prières)
+    // Dans une version plus avancée, on pourrait prendre en compte:
+    // - Les jours de voyage (qasr)
+    // - Les préférences utilisateur
+    // - Les jours fériés religieux
+    return 5;
   }
 
   // Méthodes d'invalidation du cache
@@ -384,6 +421,51 @@ class PrayerRepository {
     
     for (final key in keys) {
       await CacheService.instance.remove(key);
+    }
+  }
+
+  // Calculer la tendance avec régression linéaire simple
+  String _calculateTrend(List<double> percentages, List<bool> hasDataFlags) {
+    // Filtrer les données valides seulement
+    List<double> validPercentages = [];
+    List<int> validIndices = [];
+    
+    for (int i = 0; i < percentages.length; i++) {
+      if (hasDataFlags[i] && percentages[i] >= 0) {
+        validPercentages.add(percentages[i]);
+        validIndices.add(i);
+      }
+    }
+    
+    // Il faut au moins 3 points de données valides pour calculer une tendance
+    if (validPercentages.length < 3) {
+      return 'stable';
+    }
+    
+    // Régression linéaire simple: y = mx + b
+    int n = validPercentages.length;
+    double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    
+    for (int i = 0; i < n; i++) {
+      double x = validIndices[i].toDouble();
+      double y = validPercentages[i];
+      
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumX2 += x * x;
+    }
+    
+    // Calculer la pente (coefficient de corrélation)
+    double slope = (n.toDouble() * sumXY - sumX * sumY) / (n.toDouble() * sumX2 - sumX * sumX);
+    
+    // Déterminer la tendance basée sur la pente
+    if (slope > 2.0) {
+      return 'up';
+    } else if (slope < -2.0) {
+      return 'down';
+    } else {
+      return 'stable';
     }
   }
 }
