@@ -3,33 +3,36 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/themes/app_colors.dart';
 import '../models/prayer_model.dart';
+import '../models/user_settings_model.dart';
+import '../repositories/settings_repository.dart';
 
 class NotificationService {
-  // Constantes pour les intervalles de rappel (en minutes)
+  // Intervalles de rappel en minutes (escalade progressive)
   static const List<int> REMINDER_INTERVALS = [5, 3, 2, 1];
 
-  // Intervalles pour les notifications de préparation (en minutes avant la prière)
+  // Intervalles de preparation avant la priere (en minutes)
   static const List<int> PREPARATION_INTERVALS = [30, 15, 5];
 
   // Nombre maximum de rappels
   static const int MAX_REMINDERS = 5;
 
-  // Préférences pour stocker l'état des rappels
+  // Cles SharedPreferences
   static const String PREF_REMINDER_COUNT = 'reminder_count_';
   static const String PREF_LAST_INTENSITY = 'last_intensity_';
 
-  // Timers pour gérer les rappels automatiques
-  final Map<int, Timer> _reminderTimers = {};
-  final Map<int, List<Timer>> _preparationTimers = {};
+  // Repository pour recuperer les parametres utilisateur
+  final SettingsRepository _settingsRepository;
+
+  NotificationService(this._settingsRepository);
 
   Future<void> init() async {
     await AwesomeNotifications().initialize(
-      null, // Utiliser l'icône de l'application par défaut
+      null,
       [
         NotificationChannel(
           channelKey: 'prayer_channel',
           channelName: 'Prayer Notifications',
-          channelDescription: 'Notifications pour les horaires de prière',
+          channelDescription: 'Notifications pour les horaires de priere',
           defaultColor: AppColors.primary,
           importance: NotificationImportance.High,
           ledColor: AppColors.primary,
@@ -41,7 +44,7 @@ class NotificationService {
         NotificationChannel(
           channelKey: 'reminder_channel',
           channelName: 'Prayer Reminders',
-          channelDescription: 'Rappels insistants pour les prières manquées',
+          channelDescription: 'Rappels insistants pour les prieres manquees',
           defaultColor: AppColors.alert,
           importance: NotificationImportance.Max,
           ledColor: AppColors.alert,
@@ -54,7 +57,7 @@ class NotificationService {
         NotificationChannel(
           channelKey: 'preparation_channel',
           channelName: 'Prayer Preparation',
-          channelDescription: 'Notifications pour se préparer aux prières',
+          channelDescription: 'Notifications pour se preparer aux prieres',
           defaultColor: AppColors.secondary,
           importance: NotificationImportance.High,
           ledColor: AppColors.secondary,
@@ -66,45 +69,39 @@ class NotificationService {
       ],
     );
 
-    // Demander les permissions
-    await AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
-      if (!isAllowed) {
-        AwesomeNotifications().requestPermissionToSendNotifications();
-      }
-    });
+    // Demander les permissions et attendre le resultat
+    bool isAllowed = await AwesomeNotifications().isNotificationAllowed();
+    if (!isAllowed) {
+      await AwesomeNotifications().requestPermissionToSendNotifications();
+    }
   }
 
-  // Méthodes publiques pour être utilisées par le gestionnaire global d'actions
+  // --- Methodes publiques ---
 
-  // Réinitialiser le compteur de rappels (utilisé quand une prière est marquée comme accomplie)
   Future<void> resetReminderCount(int id) async {
-    _stopReminderTimer(id);
     await _resetReminderCount(id);
   }
 
-  // Programmer le prochain rappel avec une intensité accrue
   Future<void> scheduleNextReminder(int id, String title) async {
-    _stopReminderTimer(id);
     await _scheduleNextReminder(id, title);
   }
 
-  // Obtenir le compteur de rappels actuel (méthode publique)
   Future<int> getReminderCount(int id) async {
     return await _getReminderCount(id);
   }
 
-  // Arrêter tous les rappels pour une notification (méthode publique)
   Future<void> stopAllReminders(int id) async {
-    _stopReminderTimer(id);
     await _resetReminderCount(id);
+    // Annuler toute notification de rappel programmee
+    await AwesomeNotifications().cancel(_generateReminderId(id));
   }
 
-  // Générer un ID de notification à partir d'un ID de prière (méthode publique)
   int generateNotificationId(String prayerId) {
     return _generateNotificationId(prayerId);
   }
 
-  // Programmer toutes les notifications pour une prière
+  // --- Programmation de la sequence complete pour une priere ---
+
   Future<void> schedulePrayerNotificationSequence({
     required String prayerId,
     required PrayerType prayerType,
@@ -112,72 +109,91 @@ class NotificationService {
     required DateTime scheduledTime,
     required DateTime? nextPrayerTime,
     required String nextPrayerName,
+    required String userId,
   }) async {
-    // Nettoyer les notifications existantes pour cette prière
-    final notificationId = _generateNotificationId(prayerId);
-    await cancelNotification(notificationId);
+    // Recuperer les parametres utilisateur
+    final userSettings = await _settingsRepository.getUserSettings(userId);
 
-    // Réinitialiser les compteurs
-    await _resetReminderCount(notificationId);
-
-    final now = DateTime.now();
-
-    // Gestion intelligente des prières passées
-    final minutesAfterPrayer = now.difference(scheduledTime).inMinutes;
-    
-    if (minutesAfterPrayer > 60) {
-      // Plus d'une heure après la prière : ne pas programmer de notification
-      return;
-    } else if (minutesAfterPrayer > 0) {
-      // Prière récemment passée (moins d'une heure) : programmer seulement un rappel urgent
-      await createReminderNotification(
-        id: notificationId,
-        title: 'Prière manquée : $prayerName',
-        body: 'Vous avez manqué la prière $prayerName il y a $minutesAfterPrayer minutes. Rattrapez-la maintenant !',
-        intensityLevel: 2,
-      );
-      // Programmer un seul rappel de suivi dans 10 minutes
-      _scheduleAutoReminder(notificationId, 'Rappel urgent: $prayerName', 10);
+    // Verifier si les notifications sont activees
+    if (userSettings?.notificationsEnabled != true) {
       return;
     }
 
-    // 1. Phase de préparation: notifications avant l'heure de prière
+    // Sauvegarder l'ID utilisateur
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('current_user_id', userId);
+
+    // Nettoyer les notifications existantes pour cette priere
+    final notificationId = _generateNotificationId(prayerId);
+    await cancelNotification(notificationId);
+    await _resetReminderCount(notificationId);
+
+    final now = DateTime.now();
+    final minutesAfterPrayer = now.difference(scheduledTime).inMinutes;
+
+    // Plus d'une heure apres : ignorer
+    if (minutesAfterPrayer > 60) {
+      return;
+    }
+
+    // Priere recemment passee : envoyer un rappel urgent immediatement
+    if (minutesAfterPrayer > 0) {
+      await createReminderNotification(
+        id: notificationId,
+        title: 'Priere manquee : $prayerName',
+        body: 'Vous avez manque la priere $prayerName il y a $minutesAfterPrayer minutes. Rattrapez-la maintenant !',
+        intensityLevel: 2,
+      );
+      // Programmer un rappel de suivi dans 10 minutes (notification programmee, pas un Timer)
+      await _scheduleReminderNotification(
+        id: notificationId,
+        title: 'Rappel urgent: $prayerName',
+        body: 'Vous n\'avez pas encore confirme votre priere $prayerName !',
+        delayMinutes: 10,
+        intensityLevel: 3,
+      );
+      return;
+    }
+
+    // 1. Notifications de preparation (30, 15, 5 min avant)
     await _schedulePreparationNotifications(
-        notificationId: notificationId,
-        prayerName: prayerName,
-        scheduledTime: scheduledTime
+      notificationId: notificationId,
+      prayerName: prayerName,
+      scheduledTime: scheduledTime,
     );
 
-    // 2. Notification principale à l'heure de la prière
+    // 2. Notification principale a l'heure de la priere
     await schedulePrayerNotification(
       id: notificationId,
-      title: 'Heure de la prière',
-      body: 'C\'est l\'heure de la prière $prayerName',
+      title: 'Heure de la priere',
+      body: 'C\'est l\'heure de la priere $prayerName',
       scheduledTime: scheduledTime,
-      vibration: true,
+      userSettings: userSettings,
     );
 
-    // 3. Programmer les rappels automatiques si la prière n'est pas confirmée
-    // Délai adaptatif : 15 minutes pour les prières importantes, 10 minutes pour les autres
+    // 3. Rappel automatique programme (notification schedulee, survit a la fermeture de l'app)
     int reminderDelay = _isImportantPrayer(prayerType) ? 15 : 10;
-    _scheduleAutoReminder(notificationId, 'Rappel: $prayerName', reminderDelay);
+    await _scheduleReminderNotification(
+      id: notificationId,
+      title: 'Rappel: $prayerName',
+      body: 'Vous n\'avez pas encore confirme votre priere !',
+      delayMinutes: reminderDelay,
+      intensityLevel: 1,
+      fromScheduledTime: scheduledTime,
+    );
 
-    // 4. Si la prochaine prière est prévue, ajouter une notification de transition
+    // 4. Notification de transition a mi-chemin vers la prochaine priere
     if (nextPrayerTime != null) {
-      // Calculer un point intermédiaire (à mi-chemin entre les deux prières)
       final timeDifference = nextPrayerTime.difference(scheduledTime);
-      final midPoint = scheduledTime.add(Duration(
-          minutes: timeDifference.inMinutes ~/ 2
-      ));
+      final midPoint = scheduledTime.add(Duration(minutes: timeDifference.inMinutes ~/ 2));
 
-      // S'assurer que le point intermédiaire est dans le futur et au moins 30 minutes après la prière actuelle
-      if (midPoint.isAfter(now) && midPoint.isAfter(scheduledTime.add(Duration(minutes: 30)))) {
+      if (midPoint.isAfter(now) && midPoint.isAfter(scheduledTime.add(const Duration(minutes: 30)))) {
         await AwesomeNotifications().createNotification(
           content: NotificationContent(
-            id: _generateTransitionNotificationId(notificationId), // ID unique pour les transitions
+            id: _generateTransitionNotificationId(notificationId),
             channelKey: 'prayer_channel',
-            title: 'Rappel de prière',
-            body: 'N\'oubliez pas de faire votre prière $prayerName avant $nextPrayerName (${_formatTime(nextPrayerTime)})',
+            title: 'Rappel de priere',
+            body: 'N\'oubliez pas de faire votre priere $prayerName avant $nextPrayerName (${_formatTime(nextPrayerTime)})',
             category: NotificationCategory.Reminder,
             wakeUpScreen: true,
             color: AppColors.secondary,
@@ -191,49 +207,36 @@ class NotificationService {
     }
   }
 
-  // Programmer les notifications de préparation
+  // --- Notifications de preparation ---
+
   Future<void> _schedulePreparationNotifications({
     required int notificationId,
     required String prayerName,
-    required DateTime scheduledTime
+    required DateTime scheduledTime,
   }) async {
     final now = DateTime.now();
 
-    // Nettoyer les timers de préparation existants
-    if (_preparationTimers.containsKey(notificationId)) {
-      for (var timer in _preparationTimers[notificationId]!) {
-        timer.cancel();
-      }
-      _preparationTimers.remove(notificationId);
-    }
-
-    _preparationTimers[notificationId] = [];
-
-    // Créer des notifications pour chaque intervalle de préparation
     for (var minutes in PREPARATION_INTERVALS) {
       final preparationTime = scheduledTime.subtract(Duration(minutes: minutes));
 
-      // Ne programmer que si le temps de préparation est dans le futur
       if (preparationTime.isAfter(now)) {
-        // Préparer le texte en fonction du temps restant
         String body;
         if (minutes >= 30) {
-          body = 'Préparez-vous pour la prière $prayerName dans $minutes minutes';
+          body = 'Preparez-vous pour la priere $prayerName dans $minutes minutes';
         } else if (minutes >= 15) {
-          body = 'La prière $prayerName approche, $minutes minutes restantes';
+          body = 'La priere $prayerName approche, $minutes minutes restantes';
         } else {
-          body = 'Attention! Prière $prayerName dans $minutes minutes';
+          body = 'Attention! Priere $prayerName dans $minutes minutes';
         }
 
-        // Créer la notification de préparation
         await AwesomeNotifications().createNotification(
           content: NotificationContent(
-            id: _generatePreparationNotificationId(notificationId, minutes), // ID unique pour les préparations
+            id: _generatePreparationNotificationId(notificationId, minutes),
             channelKey: 'preparation_channel',
-            title: 'Préparation: $prayerName',
+            title: 'Preparation: $prayerName',
             body: body,
             category: NotificationCategory.Reminder,
-            wakeUpScreen: minutes < 10, // Réveiller l'écran uniquement pour les rappels proches
+            wakeUpScreen: minutes < 10,
             color: AppColors.secondary,
           ),
           schedule: NotificationCalendar.fromDate(
@@ -241,33 +244,34 @@ class NotificationService {
             allowWhileIdle: true,
           ),
         );
-
-        // Ajouter un timer pour le cas où l'application est ouverte
-        final timerDuration = preparationTime.difference(now);
-        if (timerDuration.inSeconds > 0) {
-          final timer = Timer(timerDuration, () {
-            // Si l'application est en premier plan, on pourrait afficher un rappel ici
-            print('Préparation: $prayerName dans $minutes minutes');
-          });
-
-          _preparationTimers[notificationId]!.add(timer);
-        }
       }
     }
   }
 
-  // Créer une notification de prière
+  // --- Notification principale de priere ---
+
   Future<void> schedulePrayerNotification({
     required int id,
     required String title,
     required String body,
     required DateTime scheduledTime,
-    required bool vibration,
-    String? soundSource,
+    required UserSettingsModel? userSettings,
     int delayMinutes = 0,
   }) async {
-    // Réinitialiser le compteur de rappels pour cette notification
     await _resetReminderCount(id);
+
+    final vibrationEnabled = userSettings?.vibrationEnabled ?? true;
+    final soundEnabled = userSettings?.notificationsEnabled ?? true;
+    final intensity = userSettings?.notificationIntensity ?? NotificationIntensity.medium;
+
+    bool wakeUpScreen = intensity == NotificationIntensity.high;
+    bool criticalAlert = intensity == NotificationIntensity.high;
+    bool locked = intensity != NotificationIntensity.low;
+
+    final notifDate = scheduledTime.add(Duration(minutes: delayMinutes));
+
+    // Ne programmer que si dans le futur
+    if (notifDate.isBefore(DateTime.now())) return;
 
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
@@ -276,98 +280,140 @@ class NotificationService {
         title: title,
         body: body,
         category: NotificationCategory.Alarm,
-        wakeUpScreen: true,
-        autoDismissible: false,  // Déjà configuré comme false, ce qui est correct
-        criticalAlert: true,
+        wakeUpScreen: wakeUpScreen,
+        autoDismissible: false,
+        criticalAlert: criticalAlert,
         color: AppColors.primary,
         notificationLayout: NotificationLayout.Default,
-        locked: true,  // Ajouter cette ligne pour verrouiller la notification
-        displayOnForeground: true,  // Assurer l'affichage même si l'app est au premier plan
-        displayOnBackground: true,  // Assurer l'affichage même si l'app est en arrière-plan
+        locked: locked,
+        displayOnForeground: true,
+        displayOnBackground: true,
+        payload: {
+          'vibration': vibrationEnabled.toString(),
+          'sound': soundEnabled.toString(),
+          'intensity': intensity.name,
+        },
       ),
       schedule: NotificationCalendar.fromDate(
-        date: scheduledTime.add(Duration(minutes: delayMinutes)),
+        date: notifDate,
         allowWhileIdle: true,
         preciseAlarm: true,
-        repeats: false,  // Ne pas répéter automatiquement
+        repeats: false,
       ),
       actionButtons: [
         NotificationActionButton(
           key: 'MARK_DONE',
-          label: 'Prière accomplie',
+          label: 'Priere accomplie',
           color: AppColors.primary,
-          autoDismissible: false,  // Assurer que le bouton n'auto-supprime pas
+          autoDismissible: false,
         ),
         NotificationActionButton(
           key: 'REMIND_LATER',
           label: 'Rappeler dans 5 min',
           color: AppColors.secondary,
-          autoDismissible: false,  // Assurer que le bouton n'auto-supprime pas
+          autoDismissible: false,
         ),
       ],
     );
   }
 
-  // Fonction pour programmer un rappel automatique si l'utilisateur ignore la notification
-  void _scheduleAutoReminder(int id, String title, int delayMinutes) {
-    _stopReminderTimer(id); // Arrêter tout timer existant
+  // --- Rappels programmes (notifications schedulees, pas de Timer) ---
 
-    _reminderTimers[id] = Timer(Duration(minutes: delayMinutes), () async {
-      // Check if the timer is still active and notification service is available
-      if (!_reminderTimers.containsKey(id)) return;
-      
-      // Vérifier si la notification a été traitée
-      bool notificationExists = await _checkIfNotificationExists(id);
+  /// Programme une notification de rappel dans le futur
+  /// Utilise AwesomeNotifications schedule au lieu de Timer pour survivre
+  /// a la fermeture de l'app
+  Future<void> _scheduleReminderNotification({
+    required int id,
+    required String title,
+    required String body,
+    required int delayMinutes,
+    required int intensityLevel,
+    DateTime? fromScheduledTime,
+  }) async {
+    final DateTime scheduleDate;
+    if (fromScheduledTime != null) {
+      scheduleDate = fromScheduledTime.add(Duration(minutes: delayMinutes));
+    } else {
+      scheduleDate = DateTime.now().add(Duration(minutes: delayMinutes));
+    }
 
-      if (notificationExists) {
-        // L'utilisateur a ignoré la notification, envoyer un rappel insistant
-        await _incrementReminderCount(id);
-        int reminderCount = await _getReminderCount(id);
+    // Ne programmer que si dans le futur
+    if (scheduleDate.isBefore(DateTime.now())) return;
 
-        if (reminderCount <= MAX_REMINDERS) {
-          await createReminderNotification(
-            id: id,
-            title: title,
-            body: 'Vous n\'avez pas encore confirmé votre prière !',
-            intensityLevel: reminderCount,
-          );
+    String alertEmojis = '';
+    for (int i = 0; i < intensityLevel; i++) {
+      alertEmojis += '!';
+    }
 
-          // Programmer le prochain rappel avec un délai plus court
-          int nextInterval = REMINDER_INTERVALS[
-          reminderCount < REMINDER_INTERVALS.length
-              ? reminderCount
-              : REMINDER_INTERVALS.length - 1
-          ];
-          _scheduleAutoReminder(id, title, nextInterval);
-        }
-      }
-    });
+    final reminderId = _generateReminderId(id);
+
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: reminderId,
+        channelKey: 'reminder_channel',
+        title: '$title $alertEmojis',
+        body: body,
+        locked: true,
+        displayOnForeground: true,
+        category: NotificationCategory.Alarm,
+        wakeUpScreen: true,
+        autoDismissible: false,
+        criticalAlert: true,
+        displayOnBackground: true,
+        color: AppColors.alert,
+        notificationLayout: NotificationLayout.Default,
+      ),
+      schedule: NotificationCalendar.fromDate(
+        date: scheduleDate,
+        allowWhileIdle: true,
+        preciseAlarm: true,
+      ),
+      actionButtons: [
+        NotificationActionButton(
+          key: 'MARK_DONE',
+          label: 'Priere accomplie',
+          color: AppColors.primary,
+          autoDismissible: false,
+        ),
+        NotificationActionButton(
+          key: 'REMIND_LATER',
+          label: 'Rappeler bientot',
+          color: AppColors.secondary,
+          autoDismissible: false,
+        ),
+      ],
+    );
   }
 
-  // Programmer le prochain rappel avec une intensité accrue
+  /// Quand l'utilisateur clique "Rappeler plus tard"
+  /// Programme UN SEUL rappel (pas de double-queuing)
   Future<void> _scheduleNextReminder(int id, String title) async {
     await _incrementReminderCount(id);
     int reminderCount = await _getReminderCount(id);
 
-    if (reminderCount <= MAX_REMINDERS) {
-      // Déterminer l'intervalle pour ce rappel
-      int intervalIndex = (reminderCount - 1) % REMINDER_INTERVALS.length;
-      int delayMinutes = REMINDER_INTERVALS[intervalIndex];
-
-      await createReminderNotification(
-        id: id,
-        title: title,
-        body: 'N\'oubliez pas votre prière ! (Rappel $reminderCount/$MAX_REMINDERS)',
-        intensityLevel: reminderCount,
-        delayMinutes: delayMinutes,
-      );
-
-      // Programmer un rappel automatique après ce délai
-      _scheduleAutoReminder(id, title, delayMinutes + 5);
+    if (reminderCount > MAX_REMINDERS) {
+      // Max atteint, ne plus rappeler
+      return;
     }
+
+    // Determiner l'intervalle
+    int intervalIndex = (reminderCount - 1) % REMINDER_INTERVALS.length;
+    int delayMinutes = REMINDER_INTERVALS[intervalIndex];
+
+    // Annuler tout rappel existant pour eviter le double-queuing
+    await AwesomeNotifications().cancel(_generateReminderId(id));
+
+    await _scheduleReminderNotification(
+      id: id,
+      title: title,
+      body: 'N\'oubliez pas votre priere ! (Rappel $reminderCount/$MAX_REMINDERS)',
+      delayMinutes: delayMinutes,
+      intensityLevel: reminderCount,
+    );
   }
 
-  // Créer une notification de rappel insistant pour une prière manquée
+  // --- Notification de rappel immediate ---
+
   Future<void> createReminderNotification({
     required int id,
     required String title,
@@ -375,27 +421,21 @@ class NotificationService {
     int intensityLevel = 1,
     int delayMinutes = 0,
   }) async {
-    // Enregistrer l'intensité actuelle
     await _saveReminderIntensity(id, intensityLevel);
 
-    // Création du titre avec des emojis d'alerte dont le nombre dépend de l'intensité
     String alertEmojis = '';
     for (int i = 0; i < intensityLevel; i++) {
-      alertEmojis += '⚠️';
+      alertEmojis += '!';
     }
 
-    // Augmenter la taille du texte et ajouter des points d'exclamation selon l'intensité
-    String emphasisBody = body;
-    for (int i = 0; i < intensityLevel; i++) {
-      emphasisBody += '!';
-    }
+    final reminderId = delayMinutes > 0 ? _generateReminderId(id) : id;
 
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
-        id: id,
+        id: reminderId,
         channelKey: 'reminder_channel',
         title: '$title $alertEmojis',
-        body: emphasisBody,
+        body: body,
         locked: true,
         displayOnForeground: true,
         category: NotificationCategory.Alarm,
@@ -408,134 +448,105 @@ class NotificationService {
       ),
       schedule: delayMinutes > 0
           ? NotificationCalendar.fromDate(
-        date: DateTime.now().add(Duration(minutes: delayMinutes)),
-        allowWhileIdle: true,
-        preciseAlarm: true,
-      )
+              date: DateTime.now().add(Duration(minutes: delayMinutes)),
+              allowWhileIdle: true,
+              preciseAlarm: true,
+            )
           : null,
       actionButtons: [
         NotificationActionButton(
           key: 'MARK_DONE',
-          label: 'Prière accomplie',
+          label: 'Priere accomplie',
           color: AppColors.primary,
           autoDismissible: false,
-
         ),
         NotificationActionButton(
           key: 'REMIND_LATER',
-          label: 'Rappeler bientôt',
+          label: 'Rappeler bientot',
           color: AppColors.secondary,
           autoDismissible: false,
-
         ),
       ],
     );
   }
 
-  // Vérifier si une notification existe encore (non traitée par l'utilisateur)
-  Future<bool> _checkIfNotificationExists(int id) async {
-    try {
-      // Vérifier les notifications programmées
-      var scheduledNotifications = await AwesomeNotifications().listScheduledNotifications();
-      for (var notification in scheduledNotifications) {
-        if (notification.content?.id == id) {
-          return true;
-        }
-      }
+  // --- Generation d'ID deterministe ---
 
-      return false;
-    } catch (e) {
-      // En cas d'erreur, considérer que la notification n'existe pas pour éviter les rappels infinis
-      return false;
+  /// Genere un ID stable et deterministe a partir du prayerId
+  /// Utilise un hash simple base sur les caracteres au lieu de hashCode
+  /// qui peut varier entre sessions Dart
+  int _generateNotificationId(String prayerId) {
+    int hash = 0;
+    for (int i = 0; i < prayerId.length; i++) {
+      hash = (hash * 31 + prayerId.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    // Garder dans une plage raisonnable (1-9999999)
+    return (hash % 9999999) + 1;
+  }
+
+  int _generatePreparationNotificationId(int baseId, int minutes) {
+    return 10000000 + (baseId % 1000000) + (minutes * 1000);
+  }
+
+  int _generateTransitionNotificationId(int baseId) {
+    return 20000000 + (baseId % 1000000);
+  }
+
+  int _generateReminderId(int baseId) {
+    return 30000000 + (baseId % 1000000);
+  }
+
+  // --- Helpers ---
+
+  bool _isImportantPrayer(PrayerType prayerType) {
+    switch (prayerType) {
+      case PrayerType.fajr:
+      case PrayerType.maghrib:
+      case PrayerType.isha:
+        return true;
+      case PrayerType.dhuhr:
+      case PrayerType.asr:
+        return false;
     }
   }
 
-  // Stopper le timer de rappel pour une notification
-  void _stopReminderTimer(int id) {
-    if (_reminderTimers.containsKey(id)) {
-      _reminderTimers[id]?.cancel();
-      _reminderTimers.remove(id);
-    }
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
-  // Incrémenter le compteur de rappels
+  // --- Persistence des compteurs ---
+
   Future<void> _incrementReminderCount(int id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     int currentCount = prefs.getInt('$PREF_REMINDER_COUNT$id') ?? 0;
     await prefs.setInt('$PREF_REMINDER_COUNT$id', currentCount + 1);
   }
 
-  // Obtenir le compteur de rappels actuel
   Future<int> _getReminderCount(int id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getInt('$PREF_REMINDER_COUNT$id') ?? 0;
   }
 
-  // Réinitialiser le compteur de rappels
   Future<void> _resetReminderCount(int id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setInt('$PREF_REMINDER_COUNT$id', 0);
   }
 
-  // Sauvegarder l'intensité actuelle du rappel
   Future<void> _saveReminderIntensity(int id, int intensity) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setInt('$PREF_LAST_INTENSITY$id', intensity);
   }
 
-  // Générer un ID de notification à partir d'un ID de prière
-  int _generateNotificationId(String prayerId) {
-    return int.parse(
-        prayerId.hashCode.toString().substring(0, 8).replaceAll('-', '1')
-    );
-  }
+  // --- Annulation ---
 
-  // Générer un ID unique pour les notifications de préparation
-  int _generatePreparationNotificationId(int baseId, int minutes) {
-    // Utiliser une plage séparée pour éviter les conflits (10000000 + baseId + minutes*1000)
-    return 10000000 + (baseId % 1000000) + (minutes * 1000);
-  }
-
-  // Générer un ID unique pour les notifications de transition
-  int _generateTransitionNotificationId(int baseId) {
-    // Utiliser une plage séparée pour éviter les conflits (20000000 + baseId)
-    return 20000000 + (baseId % 1000000);
-  }
-
-  // Déterminer si une prière est importante (nécessite plus de temps avant rappel)
-  bool _isImportantPrayer(PrayerType prayerType) {
-    switch (prayerType) {
-      case PrayerType.fajr:    // Prière de l'aube
-      case PrayerType.maghrib: // Prière du coucher du soleil
-      case PrayerType.isha:    // Prière de la nuit
-        return true;
-      case PrayerType.dhuhr:   // Prière de midi
-      case PrayerType.asr:     // Prière de l'après-midi
-        return false;
-    }
-  }
-
-  // Formater l'heure pour l'affichage
-  String _formatTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-  }
-
-  // Annuler une notification
   Future<void> cancelNotification(int id) async {
-    _stopReminderTimer(id);
-
-    // Annuler également les notifications de préparation associées
-    if (_preparationTimers.containsKey(id)) {
-      for (var timer in _preparationTimers[id]!) {
-        timer.cancel();
-      }
-      _preparationTimers.remove(id);
-    }
-
     // Annuler la notification principale
     await AwesomeNotifications().cancel(id);
 
-    // Annuler les notifications de préparation
+    // Annuler le rappel programme
+    await AwesomeNotifications().cancel(_generateReminderId(id));
+
+    // Annuler les notifications de preparation
     for (var minutes in PREPARATION_INTERVALS) {
       await AwesomeNotifications().cancel(_generatePreparationNotificationId(id, minutes));
     }
@@ -544,18 +555,7 @@ class NotificationService {
     await AwesomeNotifications().cancel(_generateTransitionNotificationId(id));
   }
 
-  // Annuler toutes les notifications
   Future<void> cancelAllNotifications() async {
-    _reminderTimers.forEach((id, timer) => timer.cancel());
-    _reminderTimers.clear();
-
-    _preparationTimers.forEach((id, timers) {
-      for (var timer in timers) {
-        timer.cancel();
-      }
-    });
-    _preparationTimers.clear();
-
     await AwesomeNotifications().cancelAll();
   }
 }

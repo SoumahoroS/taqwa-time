@@ -6,13 +6,13 @@ class CountdownTimer extends StatefulWidget {
   final VoidCallback onFinished;
 
   const CountdownTimer({
-    Key? key,
+    super.key,
     required this.duration,
     required this.onFinished,
-  }) : super(key: key);
+  });
 
   @override
-  _CountdownTimerState createState() => _CountdownTimerState();
+  State<CountdownTimer> createState() => _CountdownTimerState();
 }
 
 class _CountdownTimerState extends State<CountdownTimer> {
@@ -23,7 +23,6 @@ class _CountdownTimerState extends State<CountdownTimer> {
   void initState() {
     super.initState();
     _remainingTime = widget.duration;
-
     if (!_remainingTime.isNegative) {
       _startTimer();
     }
@@ -49,9 +48,7 @@ class _CountdownTimerState extends State<CountdownTimer> {
   }
 
   String _formatDuration(Duration duration) {
-    if (duration.isNegative) {
-      return "En retard";
-    }
+    if (duration.isNegative) return "En retard";
 
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -60,9 +57,8 @@ class _CountdownTimerState extends State<CountdownTimer> {
 
     if (duration.inHours > 0) {
       return '$hours:$minutes:$seconds';
-    } else {
-      return '$minutes:$seconds';
     }
+    return '$minutes:$seconds';
   }
 
   @override
@@ -72,6 +68,7 @@ class _CountdownTimerState extends State<CountdownTimer> {
       style: const TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.bold,
+        color: Colors.white,
       ),
     );
   }

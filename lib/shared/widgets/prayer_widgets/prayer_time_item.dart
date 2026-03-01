@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../shared/themes/app_colors.dart';
+import '../../../shared/themes/app_tokens.dart';
 
 class PrayerTimeItem extends StatelessWidget {
   final String name;
@@ -7,23 +8,25 @@ class PrayerTimeItem extends StatelessWidget {
   final bool isNext;
 
   const PrayerTimeItem({
-    Key? key,
+    super.key,
     required this.name,
     required this.formattedTime,
     required this.isNext,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Colors.grey[200]!,
+            color: Colors.white.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
+        color: isNext ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+        borderRadius: isNext ? BorderRadius.circular(AppTokens.radiusSM) : null,
       ),
       child: Row(
         children: [
@@ -31,25 +34,27 @@ class PrayerTimeItem extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: isNext ? AppColors.primary : Colors.grey[200],
+              color: isNext
+                  ? AppColors.primary.withValues(alpha: 0.3)
+                  : Colors.white.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Icon(
                 Icons.access_time,
-                color: isNext ? Colors.white : Colors.grey[600],
+                color: isNext ? Colors.white : Colors.white.withValues(alpha: 0.7),
                 size: 20,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppTokens.spacingMD),
           Expanded(
             child: Text(
               name,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
-                color: isNext ? AppColors.primary : Colors.black,
+                color: Colors.white.withValues(alpha: isNext ? 1.0 : 0.85),
               ),
             ),
           ),
@@ -58,7 +63,7 @@ class PrayerTimeItem extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: isNext ? FontWeight.bold : FontWeight.normal,
-              color: isNext ? AppColors.primary : Colors.black,
+              color: isNext ? AppColors.accent : Colors.white.withValues(alpha: 0.7),
             ),
           ),
         ],

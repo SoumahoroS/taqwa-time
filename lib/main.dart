@@ -10,43 +10,30 @@ import 'core/services/prayer_time_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/cache_service.dart';
 import 'core/services/performance_service.dart';
+import 'core/services/theme_service.dart';
+import 'core/services/realtime_prayer_service.dart';
 import 'core/repositories/prayer_repository.dart';
 
 // Cette variable sera accessible dans toute l'application
 NotificationService? globalNotificationService;
 
-// Méthode statique globale pour gérer les actions de notification
+// Methode statique globale pour gerer les actions de notification
 @pragma('vm:entry-point')
 Future<void> onNotificationActionReceived(ReceivedAction receivedAction) async {
-  // Traiter les actions de notification
   if (receivedAction.buttonKeyPressed == 'MARK_DONE') {
-    // L'utilisateur a marqué la prière comme accomplie
-    print('✅ Prière marquée comme accomplie depuis la notification (main.dart)');
-
-    // Si le service de notification global est disponible, réinitialiser le compteur de rappels
     if (globalNotificationService != null && receivedAction.id != null) {
       await globalNotificationService!.resetReminderCount(receivedAction.id!);
       await globalNotificationService!.cancelNotification(receivedAction.id!);
     }
   } else if (receivedAction.buttonKeyPressed == 'REMIND_LATER') {
-    // L'utilisateur a demandé un rappel
-    print('⏰ Rappel demandé depuis la notification (main.dart)');
-
-    // Si le service de notification global est disponible, programmer le prochain rappel
     if (globalNotificationService != null && receivedAction.id != null) {
       await globalNotificationService!.scheduleNextReminder(
         receivedAction.id!,
-        receivedAction.title ?? 'Rappel de prière'
+        receivedAction.title ?? 'Rappel de priere',
       );
     }
   }
 }
-
-// Fonction pour initialiser les écouteurs d'actions
-void initializeNotificationActionListeners() {
-  // Les listeners seront configurés dans app.dart pour éviter la duplication
-}
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,19 +46,37 @@ void main() async {
   await CacheService.instance.init();
   await PerformanceService().initialize();
 
-  // Initialiser et stocker le service de notification globalement
-  globalNotificationService = NotificationService();
+  // Creer les services et repositories
+  final settingsRepository = SettingsRepository();
+  final authService = AuthService();
+
+  // Initialiser le service de theme
+  final themeService = ThemeService();
+  await themeService.initialize();
+
+  // Initialiser le service de notification
+  globalNotificationService = NotificationService(settingsRepository);
   await globalNotificationService!.init();
 
-  // Configurer le gestionnaire d'actions de notification avec une référence à une méthode statique
-  initializeNotificationActionListeners();
+  // Initialiser le service temps reel avec ses dependances
+  final realtimePrayerService = RealtimePrayerService();
+  realtimePrayerService.initialize(
+    authService: authService,
+    settingsRepository: settingsRepository,
+  );
 
+  // Demarrer le service temps reel et programmer les notifications
+  // quand l'utilisateur est connecte
+  _startRealtimeServiceWhenReady(authService, realtimePrayerService);
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider<ThemeService>(
+          create: (_) => themeService,
+        ),
         Provider<AuthService>(
-          create: (_) => AuthService(),
+          create: (_) => authService,
         ),
         Provider<PrayerTimeService>(
           create: (_) => PrayerTimeService(),
@@ -83,14 +88,32 @@ void main() async {
           create: (_) => PrayerRepository(),
         ),
         Provider<SettingsRepository>(
-          create: (_) => SettingsRepository(),
+          create: (_) => settingsRepository,
+        ),
+        Provider<RealtimePrayerService>(
+          create: (_) => realtimePrayerService,
         ),
         StreamProvider(
           create: (context) => context.read<AuthService>().authStateChanges,
           initialData: null,
         ),
       ],
-      child: MyApp(),
+      child: const MyApp(),
     ),
   );
+}
+
+/// Ecoute l'etat d'authentification et demarre le service temps reel
+/// + programmation automatique des notifications quand l'utilisateur se connecte
+void _startRealtimeServiceWhenReady(
+  AuthService authService,
+  RealtimePrayerService realtimePrayerService,
+) {
+  authService.authStateChanges.listen((user) async {
+    if (user != null) {
+      // Utilisateur connecte : demarrer le service et programmer les notifications
+      await realtimePrayerService.start();
+      await realtimePrayerService.scheduleTodayPrayers();
+    }
+  });
 }

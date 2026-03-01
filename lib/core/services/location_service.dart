@@ -230,7 +230,7 @@ class LocationService {
               ),
               SizedBox(height: 8),
               Text(
-                'Exemples:\nParis: 48.8566, 2.3522\nMarseille: 43.2965, 5.3698\nLyon: 45.7640, 4.8357',
+                'Exemples:\nAbidjan: 5.3599, -4.0083\nBouake: 7.6939, -5.0308\nYamoussoukro: 6.8276, -5.2893',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],

@@ -1,29 +1,151 @@
 import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/prayer_model.dart';
+import '../models/user_settings_model.dart' as app;
 import '../services/location_service.dart';
 
 class PrayerTimeService {
   final LocationService _locationService = LocationService();
 
-  // Obtenir tous les horaires de prière pour une journée
+  /// Charge la methode de calcul sauvegardee dans les settings utilisateur
+  Future<CalculationMethod> _getSavedCalculationMethod() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Chercher dans les settings locaux de l'utilisateur
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith('user_settings_')) {
+          final settingsJson = prefs.getString(key);
+          if (settingsJson != null && settingsJson.contains('calculationMethod')) {
+            final methodName = RegExp(r'"calculationMethod"\s*:\s*"(\w+)"')
+                .firstMatch(settingsJson)
+                ?.group(1);
+            if (methodName != null) {
+              return _toAdhanMethod(app.CalculationMethod.values.byName(methodName));
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return CalculationMethod.muslim_world_league;
+  }
+
+  /// Charge le madhab sauvegarde dans les settings utilisateur
+  Future<Madhab> _getSavedMadhab() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith('user_settings_')) {
+          final settingsJson = prefs.getString(key);
+          if (settingsJson != null && settingsJson.contains('madhab')) {
+            final madhabName = RegExp(r'"madhab"\s*:\s*"(\w+)"')
+                .firstMatch(settingsJson)
+                ?.group(1);
+            if (madhabName != null) {
+              return _toAdhanMadhab(app.Madhab.values.byName(madhabName));
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return Madhab.shafi;
+  }
+
+  /// Convertir la methode de calcul de l'app vers celle du package adhan
+  CalculationMethod _toAdhanMethod(app.CalculationMethod method) {
+    switch (method) {
+      case app.CalculationMethod.mwl:
+        return CalculationMethod.muslim_world_league;
+      case app.CalculationMethod.isna:
+        return CalculationMethod.north_america;
+      case app.CalculationMethod.egypt:
+        return CalculationMethod.egyptian;
+      case app.CalculationMethod.karachi:
+        return CalculationMethod.karachi;
+      case app.CalculationMethod.tehran:
+        return CalculationMethod.tehran;
+      case app.CalculationMethod.jafari:
+        return CalculationMethod.kuwait;
+    }
+  }
+
+  /// Charge les offsets de priere sauvegardes dans les settings utilisateur
+  Future<Map<String, int>> _getSavedPrayerOffsets() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys();
+      for (final key in keys) {
+        if (key.startsWith('user_settings_')) {
+          final settingsJson = prefs.getString(key);
+          if (settingsJson != null && settingsJson.contains('prayerOffsets')) {
+            final match = RegExp(r'"prayerOffsets"\s*:\s*\{([^}]*)\}')
+                .firstMatch(settingsJson);
+            if (match != null) {
+              final offsetsStr = match.group(1)!;
+              final offsets = <String, int>{};
+              final entries = RegExp(r'"(\w+)"\s*:\s*(-?\d+)');
+              for (final m in entries.allMatches(offsetsStr)) {
+                offsets[m.group(1)!] = int.parse(m.group(2)!);
+              }
+              return offsets;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  /// Applique les offsets aux horaires de priere
+  Map<PrayerType, DateTime> _applyOffsets(
+    Map<PrayerType, DateTime> times,
+    Map<String, int> offsets,
+  ) {
+    if (offsets.isEmpty) return times;
+    return times.map((type, time) {
+      final offset = offsets[type.name] ?? 0;
+      return MapEntry(type, time.add(Duration(minutes: offset)));
+    });
+  }
+
+  /// Convertir le madhab de l'app vers celui du package adhan
+  Madhab _toAdhanMadhab(app.Madhab madhab) {
+    switch (madhab) {
+      case app.Madhab.shafi:
+        return Madhab.shafi;
+      case app.Madhab.hanafi:
+        return Madhab.hanafi;
+    }
+  }
+
+  // Obtenir tous les horaires de priere pour une journee
   Future<PrayerTimes> getPrayerTimesForLocation({
     DateTime? date,
     CalculationParameters? parameters,
     CalculationMethod? calculationMethod,
     Madhab? madhab,
   }) async {
-    // Obtenir les coordonnées de l'utilisateur
+    // Obtenir les coordonnees de l'utilisateur (Abidjan par defaut)
     final (latitude, longitude) = await _locationService.getCoordinates();
-
     final coordinates = Coordinates(latitude, longitude);
-    final params = parameters ??
-        (calculationMethod?.getParameters() ??
-            CalculationMethod.muslim_world_league.getParameters());
 
-    // Définir le madhab si fourni
+    // Charger les parametres : argument > settings sauvegardes > defaut
+    CalculationParameters params;
+    if (parameters != null) {
+      params = parameters;
+    } else if (calculationMethod != null) {
+      params = calculationMethod.getParameters();
+    } else {
+      final savedMethod = await _getSavedCalculationMethod();
+      params = savedMethod.getParameters();
+    }
+
     if (madhab != null) {
       params.madhab = madhab;
+    } else {
+      params.madhab = await _getSavedMadhab();
     }
 
     final dateToUse = date ?? DateTime.now();
@@ -32,7 +154,7 @@ class PrayerTimeService {
     return PrayerTimes(coordinates, dateComponents, params);
   }
 
-  // Créer les modèles de prière pour une journée
+  // Creer les modeles de priere pour une journee
   Future<List<PrayerModel>> createDailyPrayers({
     required String userId,
     DateTime? date,
@@ -46,58 +168,34 @@ class PrayerTimeService {
       madhab: madhab,
     );
 
+    final offsets = await _getSavedPrayerOffsets();
+    final rawTimes = {
+      PrayerType.fajr: prayerTimes.fajr,
+      PrayerType.dhuhr: prayerTimes.dhuhr,
+      PrayerType.asr: prayerTimes.asr,
+      PrayerType.maghrib: prayerTimes.maghrib,
+      PrayerType.isha: prayerTimes.isha,
+    };
+    final adjustedTimes = _applyOffsets(rawTimes, offsets);
+
     final List<PrayerModel> prayers = [];
     final now = DateTime.now();
 
-    // Fajr
-    prayers.add(PrayerModel(
-      id: '${userId}_${today.year}${today.month}${today.day}_fajr',
-      userId: userId,
-      type: PrayerType.fajr,
-      scheduledTime: prayerTimes.fajr,
-      status: now.isAfter(prayerTimes.fajr) ? PrayerStatus.missed : PrayerStatus.notYet,
-    ));
-
-    // Dhuhr
-    prayers.add(PrayerModel(
-      id: '${userId}_${today.year}${today.month}${today.day}_dhuhr',
-      userId: userId,
-      type: PrayerType.dhuhr,
-      scheduledTime: prayerTimes.dhuhr,
-      status: now.isAfter(prayerTimes.dhuhr) ? PrayerStatus.missed : PrayerStatus.notYet,
-    ));
-
-    // Asr
-    prayers.add(PrayerModel(
-      id: '${userId}_${today.year}${today.month}${today.day}_asr',
-      userId: userId,
-      type: PrayerType.asr,
-      scheduledTime: prayerTimes.asr,
-      status: now.isAfter(prayerTimes.asr) ? PrayerStatus.missed : PrayerStatus.notYet,
-    ));
-
-    // Maghrib
-    prayers.add(PrayerModel(
-      id: '${userId}_${today.year}${today.month}${today.day}_maghrib',
-      userId: userId,
-      type: PrayerType.maghrib,
-      scheduledTime: prayerTimes.maghrib,
-      status: now.isAfter(prayerTimes.maghrib) ? PrayerStatus.missed : PrayerStatus.notYet,
-    ));
-
-    // Isha
-    prayers.add(PrayerModel(
-      id: '${userId}_${today.year}${today.month}${today.day}_isha',
-      userId: userId,
-      type: PrayerType.isha,
-      scheduledTime: prayerTimes.isha,
-      status: now.isAfter(prayerTimes.isha) ? PrayerStatus.missed : PrayerStatus.notYet,
-    ));
+    for (final type in PrayerType.values) {
+      final time = adjustedTimes[type]!;
+      prayers.add(PrayerModel(
+        id: '${userId}_${today.year}${today.month}${today.day}_${type.name}',
+        userId: userId,
+        type: type,
+        scheduledTime: time,
+        status: now.isAfter(time) ? PrayerStatus.missed : PrayerStatus.notYet,
+      ));
+    }
 
     return prayers;
   }
 
-  // Obtenir la prochaine prière
+  // Obtenir la prochaine priere
   Future<(PrayerType, DateTime)> getNextPrayer({
     DateTime? date,
     CalculationMethod? calculationMethod,
@@ -109,36 +207,40 @@ class PrayerTimeService {
       madhab: madhab,
     );
 
+    final offsets = await _getSavedPrayerOffsets();
+    final rawTimes = {
+      PrayerType.fajr: prayerTimes.fajr,
+      PrayerType.dhuhr: prayerTimes.dhuhr,
+      PrayerType.asr: prayerTimes.asr,
+      PrayerType.maghrib: prayerTimes.maghrib,
+      PrayerType.isha: prayerTimes.isha,
+    };
+    final adjusted = _applyOffsets(rawTimes, offsets);
+
     final now = DateTime.now();
 
-    if (now.isBefore(prayerTimes.fajr)) {
-      return (PrayerType.fajr, prayerTimes.fajr);
-    }
-    if (now.isBefore(prayerTimes.dhuhr)) {
-      return (PrayerType.dhuhr, prayerTimes.dhuhr);
-    }
-    if (now.isBefore(prayerTimes.asr)) {
-      return (PrayerType.asr, prayerTimes.asr);
-    }
-    if (now.isBefore(prayerTimes.maghrib)) {
-      return (PrayerType.maghrib, prayerTimes.maghrib);
-    }
-    if (now.isBefore(prayerTimes.isha)) {
-      return (PrayerType.isha, prayerTimes.isha);
+    for (final type in PrayerType.values) {
+      if (now.isBefore(adjusted[type]!)) {
+        return (type, adjusted[type]!);
+      }
     }
 
-    // Si toutes les prières sont passées, calculer Fajr pour demain
-    final tomorrow = DateTime.now().add(Duration(days: 1));
+    // Si toutes les prieres sont passees, calculer Fajr pour demain
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
     final tomorrowPrayers = await getPrayerTimesForLocation(
       date: tomorrow,
       calculationMethod: calculationMethod,
       madhab: madhab,
     );
+    final tomorrowRaw = {
+      PrayerType.fajr: tomorrowPrayers.fajr,
+    };
+    final tomorrowAdjusted = _applyOffsets(tomorrowRaw, offsets);
 
-    return (PrayerType.fajr, tomorrowPrayers.fajr);
+    return (PrayerType.fajr, tomorrowAdjusted[PrayerType.fajr]!);
   }
 
-  // Obtenir tous les horaires de prière pour le jour
+  // Obtenir tous les horaires de priere pour le jour
   Future<Map<PrayerType, DateTime>> getAllPrayerTimes({
     DateTime? date,
     CalculationMethod? calculationMethod,
@@ -150,16 +252,19 @@ class PrayerTimeService {
       madhab: madhab,
     );
 
-    return {
+    final offsets = await _getSavedPrayerOffsets();
+    final rawTimes = {
       PrayerType.fajr: prayerTimes.fajr,
       PrayerType.dhuhr: prayerTimes.dhuhr,
       PrayerType.asr: prayerTimes.asr,
       PrayerType.maghrib: prayerTimes.maghrib,
       PrayerType.isha: prayerTimes.isha,
     };
+
+    return _applyOffsets(rawTimes, offsets);
   }
 
-  // Obtenir le nom de la prière en français
+  // Obtenir le nom de la priere
   String getPrayerName(PrayerType prayer) {
     switch (prayer) {
       case PrayerType.fajr: return 'Fajr';
@@ -170,18 +275,18 @@ class PrayerTimeService {
     }
   }
 
-  // Formater l'heure de la prière
+  // Formater l'heure de la priere
   String formatPrayerTime(DateTime time) {
     return DateFormat.Hm().format(time);
   }
 
-  // Calculer le temps restant jusqu'à la prochaine prière
+  // Calculer le temps restant jusqu'a la prochaine priere
   Duration timeUntilNextPrayer(DateTime prayerTime) {
     final now = DateTime.now();
     return prayerTime.difference(now);
   }
 
-  // Calculer la durée en format lisible
+  // Calculer la duree en format lisible
   String formatDuration(Duration duration) {
     if (duration.isNegative) {
       return "En retard";
@@ -197,7 +302,7 @@ class PrayerTimeService {
     }
   }
 
-  // Programmer les notifications pour toutes les prières du jour
+  // Programmer les notifications pour toutes les prieres du jour
   Future<void> schedulePrayerNotifications({
     required String userId,
     required Function(int id, String title, String body, DateTime time, Map<String, String> payload) scheduleNotification,
@@ -215,17 +320,12 @@ class PrayerTimeService {
     final now = DateTime.now();
 
     for (var prayer in prayers) {
-      // Ne programmer que les notifications pour les prières à venir
       if (prayer.scheduledTime.isAfter(now)) {
-        final title = 'Heure de la prière';
+        final title = 'Heure de la priere';
         final body = 'C\'est l\'heure de ${getPrayerName(prayer.type)} (${formatPrayerTime(prayer.scheduledTime)})';
 
-        // Générer un ID unique pour la notification
-        final notificationId = int.parse(
-            prayer.id.hashCode.toString().substring(0, 8).replaceAll('-', '1')
-        );
+        final notificationId = _generateNotificationId(prayer.id);
 
-        // Programmer la notification
         await scheduleNotification(
           notificationId,
           title,
@@ -235,5 +335,13 @@ class PrayerTimeService {
         );
       }
     }
+  }
+
+  int _generateNotificationId(String prayerId) {
+    int hash = 0;
+    for (int i = 0; i < prayerId.length; i++) {
+      hash = (hash * 31 + prayerId.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return (hash % 9999999) + 1;
   }
 }

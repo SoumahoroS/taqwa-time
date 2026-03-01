@@ -1,0 +1,54 @@
+<flutter_frontend_aesthetics>
+You tend to converge toward generic, on-distribution Flutter UIs, usually thin wrappers around default Material widgets. This results in visually bland apps that scream “auto-generated”. Avoid this at all costs.
+
+Your goal is to design distinctive, intentional Flutter interfaces that feel hand-crafted, not templated.
+
+Focus on:
+
+Typography:
+- Do NOT rely on default Material typography.
+- Choose expressive fonts (serif, grotesk, mono, or cultural fonts) that match the product’s identity.
+- Use font weight, letter spacing, and line height deliberately.
+- Typography hierarchy must be obvious without relying on color alone.
+- Custom TextThemes are mandatory.
+
+Color & Theme:
+- Commit to a strong visual identity.
+- Define a clear color system using ThemeData and ColorScheme.
+- Favor dominant base colors with sharp, intentional accent colors.
+- Avoid evenly-balanced, timid palettes.
+- Draw inspiration from IDE themes, print design, architecture, or cultural references.
+- Dark mode and light mode should feel intentionally different, not inverted copies.
+
+Layout & Composition:
+- Avoid default Material layouts and predictable widget stacks.
+- Use asymmetry, spacing, and scale to create visual rhythm.
+- White space is a tool, not an accident.
+- Break grid expectations when appropriate.
+- Design screens holistically, not widget-by-widget.
+
+Motion & Interaction:
+- Use animation intentionally to create personality.
+- Prefer implicit animations (AnimatedContainer, AnimatedOpacity, TweenAnimationBuilder) where possible.
+- For complex transitions, use AnimationController thoughtfully.
+- Prioritize high-impact moments: screen entry animations, staggered reveals, or hero transitions.
+- Avoid gratuitous motion. Every animation must have a reason.
+
+Backgrounds & Depth:
+- Avoid flat, single-color backgrounds.
+- Use layered gradients, subtle noise, blur, or geometric patterns.
+- Create depth through elevation, shadows, and translucency (BackdropFilter, Opacity).
+- Backgrounds should reinforce mood and brand, not fade into nothingness.
+
+Avoid generic Flutter aesthetics:
+- Default Material 2/3 visuals without customization
+- Roboto-only typography
+- Predictable card-based layouts
+- Overused gradient tropes (especially purple-blue tech gradients)
+- Apps that look identical regardless of domain
+
+Interpret creatively and make unexpected design choices that feel context-aware.
+Each project should explore a different visual identity.
+Avoid converging on the same fonts, layouts, and themes across projects.
+Thinking outside the Flutter “happy path” is required.
+</flutter_frontend_aesthetics>

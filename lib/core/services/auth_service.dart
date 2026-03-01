@@ -8,6 +8,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: '449012546233-8806vv2pprf5eat4201nrprk7md797fl.apps.googleusercontent.com',
     scopes: ['email', 'profile'],
   );
 
@@ -175,11 +176,6 @@ class AuthService {
       print('Erreur lors de la récupération des données utilisateur: $e');
       return null;
     }
-  }
-
-  // Invalider le cache utilisateur lors de modifications
-  Future<void> _invalidateUserCache(String userId) async {
-    await CacheService.instance.remove('user_data_$userId');
   }
 
 }

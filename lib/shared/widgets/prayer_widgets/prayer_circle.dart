@@ -9,12 +9,12 @@ class PrayerCircle extends StatelessWidget {
   final VoidCallback onTimerFinished;
 
   const PrayerCircle({
-    Key? key,
+    super.key,
     required this.prayerName,
     required this.formattedTime,
     required this.timeUntil,
     required this.onTimerFinished,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,11 +25,18 @@ class PrayerCircle extends StatelessWidget {
       height: 180,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.grey[100],
+        color: Colors.white.withValues(alpha: 0.08),
         border: Border.all(
-          color: Colors.grey[300]!,
-          width: 2,
+          color: Colors.white.withValues(alpha: 0.25),
+          width: 2.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.2),
+            blurRadius: 24,
+            spreadRadius: 4,
+          ),
+        ],
       ),
       child: Center(
         child: Column(
@@ -40,29 +47,30 @@ class PrayerCircle extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+                color: Colors.white,
               ),
             ),
             Text(
               formattedTime,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w500,
+                color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
             const SizedBox(height: 8),
             minutesRemaining > 0
                 ? Text(
-              'Dans $minutesRemaining min',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-              ),
-            )
+                    'Dans $minutesRemaining min',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  )
                 : CountdownTimer(
-              duration: timeUntil,
-              onFinished: onTimerFinished,
-            ),
+                    duration: timeUntil,
+                    onFinished: onTimerFinished,
+                  ),
           ],
         ),
       ),

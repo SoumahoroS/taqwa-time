@@ -5,7 +5,7 @@ import '../models/prayer_model.dart';
 import 'prayer_time_service.dart';
 import 'spiritual_messages_service.dart';
 import 'auth_service.dart';
-import 'notification_service.dart';
+import '../repositories/settings_repository.dart';
 import '../../main.dart' show globalNotificationService;
 
 class RealtimePrayerService {
@@ -14,6 +14,17 @@ class RealtimePrayerService {
   RealtimePrayerService._internal();
 
   final PrayerTimeService _prayerTimeService = PrayerTimeService();
+  AuthService? _authService;
+  SettingsRepository? _settingsRepository;
+  
+  // Méthode pour injecter les dépendances
+  void initialize({
+    required AuthService authService,
+    required SettingsRepository settingsRepository,
+  }) {
+    _authService = authService;
+    _settingsRepository = settingsRepository;
+  }
   
   // Streams pour la réactivité temps réel
   final BehaviorSubject<List<PrayerModel>> _prayersSubject = BehaviorSubject<List<PrayerModel>>();
@@ -43,8 +54,8 @@ class RealtimePrayerService {
   PrayerModel? get nextPrayer => _currentPrayerSubject.valueOrNull;
   bool get isConnected => _isConnectedSubject.value;
 
-  Future<void> initialize() async {
-    print("🚀 Initialisation du service temps réel");
+  Future<void> start() async {
+    print("🚀 Démarrage du service temps réel");
     
     await _setupConnectivityMonitoring();
     await _loadInitialData();
@@ -52,7 +63,7 @@ class RealtimePrayerService {
     _startMessageRotation();
     _startPrayerMonitoring();
     
-    print("✅ Service temps réel initialisé");
+    print("✅ Service temps réel démarré");
   }
 
   Future<void> _setupConnectivityMonitoring() async {
@@ -72,8 +83,16 @@ class RealtimePrayerService {
   Future<void> _loadInitialData() async {
     try {
       final now = DateTime.now();
+      
+      // Vérifier si l'utilisateur est connecté
+      if (_authService?.currentUser == null) {
+        print("⚠️ Aucun utilisateur connecté pour charger les prières");
+        return;
+      }
+      
+      final userId = _authService!.currentUser!.uid;
       final prayers = await _prayerTimeService.createDailyPrayers(
-        userId: "temp_user",
+        userId: userId,
         date: now
       );
       
@@ -217,8 +236,15 @@ class RealtimePrayerService {
       print("🔄 Actualisation des prières");
       final now = DateTime.now();
       
+      // Vérifier si l'utilisateur est connecté
+      if (_authService?.currentUser == null) {
+        print("⚠️ Aucun utilisateur connecté pour actualiser les prières");
+        return;
+      }
+      
+      final userId = _authService!.currentUser!.uid;
       final prayers = await _prayerTimeService.createDailyPrayers(
-        userId: "temp_user", 
+        userId: userId, 
         date: now
       );
       
@@ -250,6 +276,11 @@ class RealtimePrayerService {
     await _updateCurrentPrayer();
     await _updateSpiritualMessage();
     
+    // Arrêter les notifications pour cette prière
+    if (globalNotificationService != null) {
+      final notificationId = globalNotificationService!.generateNotificationId(prayerId);
+      await globalNotificationService!.resetReminderCount(notificationId);
+    }
     
     print("✅ Prière marquée comme accomplie: ${completedPrayer.type.name}");
   }
@@ -257,6 +288,22 @@ class RealtimePrayerService {
   Future<void> scheduleTodayPrayers() async {
     final prayers = _cachedPrayers;
     if (prayers == null) return;
+    
+    // Vérifier si l'utilisateur est connecté
+    if (_authService?.currentUser == null) {
+      print("⚠️ Aucun utilisateur connecté pour programmer les notifications");
+      return;
+    }
+    
+    final userId = _authService!.currentUser!.uid;
+    
+    // Vérifier les paramètres de notification de l'utilisateur
+    final userSettings = await _settingsRepository?.getUserSettings(userId);
+    
+    if (userSettings?.notificationsEnabled != true) {
+      print("🔕 Notifications désactivées par l'utilisateur");
+      return;
+    }
     
     print("📅 Programmation des notifications pour aujourd'hui");
     
@@ -275,6 +322,7 @@ class RealtimePrayerService {
             scheduledTime: prayer.scheduledTime,
             nextPrayerTime: nextPrayer?.scheduledTime,
             nextPrayerName: nextPrayer != null ? _prayerTimeService.getPrayerName(nextPrayer.type) : '',
+            userId: userId,
           );
         }
       }

@@ -1,6 +1,4 @@
 import 'dart:math';
-import 'dart:async';
-import 'package:rxdart/rxdart.dart';
 
 class SpiritualMessage {
   final String text;

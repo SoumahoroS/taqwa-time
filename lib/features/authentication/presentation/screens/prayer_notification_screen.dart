@@ -96,9 +96,7 @@ class _PrayerNotificationScreenState extends State<PrayerNotificationScreen> wit
           : PrayerStatus.late;
 
       // Générer un ID de notification basé sur l'ID de la prière
-      final notificationId = int.parse(
-          widget.prayerId.hashCode.toString().substring(0, 8).replaceAll('-', '1')
-      );
+      final notificationId = _notificationService.generateNotificationId(widget.prayerId);
 
       // Annuler toute notification pour cette prière
       await _notificationService.cancelNotification(notificationId);
@@ -125,10 +123,7 @@ class _PrayerNotificationScreenState extends State<PrayerNotificationScreen> wit
   }
 
   Future<void> _remindLater() async {
-    // Générer un ID de notification basé sur l'ID de la prière
-    final notificationId = int.parse(
-        widget.prayerId.hashCode.toString().substring(0, 8).replaceAll('-', '1')
-    );
+    final notificationId = _notificationService.generateNotificationId(widget.prayerId);
 
     // Programmer un rappel avec une intensité accrue
     await _notificationService.createReminderNotification(

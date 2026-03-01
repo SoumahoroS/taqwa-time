@@ -6,10 +6,10 @@ class PrayerIndicator extends StatelessWidget {
   final bool isPrayed;
 
   const PrayerIndicator({
-    Key? key,
+    super.key,
     required this.name,
     required this.isPrayed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,19 +20,22 @@ class PrayerIndicator extends StatelessWidget {
           height: 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isPrayed ? AppColors.primary : Colors.transparent,
+            color: isPrayed ? Colors.white : Colors.transparent,
             border: Border.all(
-              color: isPrayed ? AppColors.primary : Colors.grey[600]!,
+              color: isPrayed ? Colors.white : Colors.white.withValues(alpha: 0.4),
               width: 2,
             ),
           ),
+          child: isPrayed
+              ? const Icon(Icons.check, size: 14, color: AppColors.primary)
+              : null,
         ),
         const SizedBox(height: 4),
         Text(
           name,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey[800],
+            color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
       ],

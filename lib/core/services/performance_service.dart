@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -24,12 +23,12 @@ class PerformanceService {
   Stream<PerformanceMetrics> get metrics => _metricsSubject.stream;
   
   Future<void> initialize() async {
-    print("🚀 Initialisation du service de performance");
-    
+    print("Salam ! Initialisation du service de performance...");
+
     _startPerformanceMonitoring();
     await _loadCacheFromDisk();
-    
-    print("✅ Service de performance initialisé");
+
+    print("Service de performance pret, Alhamdulillah !");
   }
 
   void _startPerformanceMonitoring() {
@@ -85,7 +84,7 @@ class PerformanceService {
       _updateMetrics(cacheHit: false, operation: 'cache_miss', duration: stopwatch.elapsed);
       return null;
     } catch (e) {
-      print("❌ Erreur lecture cache $key: $e");
+      print("Erreur lecture cache $key: $e");
       _updateMetrics(cacheHit: false, operation: 'cache_error', duration: stopwatch.elapsed);
       return null;
     }
@@ -112,7 +111,7 @@ class PerformanceService {
       
       _updateMetrics(cacheHit: false, operation: 'cache_write', duration: stopwatch.elapsed);
     } catch (e) {
-      print("❌ Erreur écriture cache $key: $e");
+      print("Erreur ecriture cache $key: $e");
       _updateMetrics(cacheHit: false, operation: 'cache_error', duration: stopwatch.elapsed);
     }
   }
@@ -151,7 +150,7 @@ class PerformanceService {
       
       await prefs.setString('cache_$key', entry.toJson());
     } catch (e) {
-      print("❌ Erreur cache disque $key: $e");
+      print("Erreur cache disque $key: $e");
     }
   }
 
@@ -203,15 +202,15 @@ class PerformanceService {
               prefs.remove(fullKey);
             }
           } catch (e) {
-            print("❌ Erreur chargement cache $key: $e");
+            print("Erreur chargement cache $key: $e");
             prefs.remove(fullKey);
           }
         }
       }
       
-      print("📋 Cache chargé: $loadedCount entrées");
+      print("Cache charge avec succes : $loadedCount entrees, MashaAllah !");
     } catch (e) {
-      print("❌ Erreur chargement cache disque: $e");
+      print("Erreur chargement cache disque: $e");
     }
   }
 
@@ -269,7 +268,7 @@ class PerformanceService {
       }
     }
     
-    print("🔄 Calcul de $key");
+    print("Calcul en cours pour $key, Insha'Allah...");
     final result = await computation();
     await setCache(key, result, ttl: ttl);
     
@@ -285,7 +284,7 @@ class PerformanceService {
     }
     
     await Future.wait(futures);
-    print("✅ Préchargement terminé: ${preloadTasks.length} tâches");
+    print("Prechargement termine : ${preloadTasks.length} taches, Alhamdulillah !");
   }
 
   Future<void> _preloadTask(String key, Future Function() task) async {
@@ -296,7 +295,7 @@ class PerformanceService {
         await setCache(key, result, memoryOnly: true);
       }
     } catch (e) {
-      print("❌ Erreur préchargement $key: $e");
+      print("Erreur prechargement $key: $e");
     }
   }
 
@@ -328,7 +327,7 @@ class PerformanceService {
       await prefs.remove(key);
     }
     
-    print("🗑️ Cache nettoyé" + (pattern != null ? " (pattern: $pattern)" : ""));
+    print("Cache nettoye" + (pattern != null ? " (pattern: $pattern)" : "") + ", Bismillah !");
   }
 
   // Statistiques détaillées
@@ -352,7 +351,7 @@ class PerformanceService {
   }
 
   void dispose() {
-    print("🛑 Arrêt du service de performance");
+    print("Arret du service de performance. Ma'a salama !");
     
     for (final timer in _cacheTimers.values) {
       timer.cancel();

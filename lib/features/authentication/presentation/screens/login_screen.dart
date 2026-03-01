@@ -3,6 +3,11 @@ import 'package:provider/provider.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../shared/themes/app_colors.dart';
+import '../../../../shared/themes/app_tokens.dart';
+import '../../../../shared/widgets/glass/glass_card.dart';
+import '../../../../shared/widgets/glass/glass_button.dart';
+import '../../../../shared/widgets/glass/glass_text_field.dart';
+import '../../../../shared/widgets/glass/gradient_mesh_background.dart';
 import '../../../../routes.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,7 +33,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _requestLocationAfterLogin() async {
     if (!mounted) return;
-    
     try {
       await _locationService.requestLocationOnLogin(context);
     } catch (e) {
@@ -39,10 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _authenticate() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     _formKey.currentState!.save();
 
     final authService = Provider.of<AuthService>(context, listen: false);
@@ -54,9 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (mounted) {
-        // Demander la localisation après connexion réussie
         await _requestLocationAfterLogin();
-        
         Navigator.of(context).pushNamedAndRemoveUntil(
           AppRoutes.home,
           (route) => false,
@@ -64,36 +63,26 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erreur d\'authentification: ${e.toString()}'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.alert,
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     final authService = Provider.of<AuthService>(context, listen: false);
 
     try {
       final user = await authService.signInWithGoogle();
-      
       if (user != null && mounted) {
-        // Demander la localisation après connexion réussie
         await _requestLocationAfterLogin();
-        
         Navigator.of(context).pushNamedAndRemoveUntil(
           AppRoutes.home,
           (route) => false,
@@ -101,93 +90,109 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erreur de connexion Google: ${e.toString()}'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.alert,
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  Widget _buildGoogleButton() {
+    return GestureDetector(
+      onTap: _isLoading ? null : _signInWithGoogle,
+      child: Container(
+        width: double.infinity,
+        height: 56,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMD),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Logo Google
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CustomPaint(
+                painter: _GoogleLogoPainter(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Continuer avec Google',
+              style: TextStyle(
+                color: Color(0xFF3C4043),
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white,
-              AppColors.primary.withAlpha(15),
-              Colors.white,
-            ],
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo de l'application
-                  Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withAlpha(75),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Image.asset(
-                        'assets/images/logos/taqwaTime-logo.jpeg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Center(
-                              child: Icon(
-                                Icons.timer,
-                                size: 60,
-                                color: Colors.white,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          const GradientMeshBackground(),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AppTokens.spacingLG),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Logo
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(AppTokens.radiusLG),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                            blurRadius: 24,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(AppTokens.radiusLG),
+                        child: Image.asset(
+                          'assets/images/logos/taqwaTime-logo.jpeg',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(AppTokens.radiusLG),
                               ),
-                            ),
-                          );
-                        },
+                              child: const Icon(Icons.timer, size: 50, color: Colors.white),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 24),
+                    const SizedBox(height: AppTokens.spacingLG),
 
-                  // Titre avec gradient
-                  ShaderMask(
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: [AppColors.primary, AppColors.secondary],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(bounds),
-                    child: Text(
+                    const Text(
                       'TaqwaTime',
                       style: TextStyle(
                         fontSize: 32,
@@ -195,248 +200,171 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.white,
                       ),
                     ),
-                  ),
-                  SizedBox(height: 8),
-
-                  // Sous-titre
-                  Text(
-                    'Connectez-vous à votre compte',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
+                    const SizedBox(height: AppTokens.spacingSM),
+                    Text(
+                      'Connectez-vous à votre compte',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 32),
+                    const SizedBox(height: AppTokens.spacingXL),
 
-                  // Formulaire
-                  Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        // Champ email avec design moderne
-                        Container(
-                          decoration: BoxDecoration(
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(25),
-                                blurRadius: 10,
-                                offset: Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: TextFormField(
-                            controller: _emailController,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email, color: AppColors.primary),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide(color: AppColors.primary, width: 2),
-                              ),
+                    // Form card
+                    GlassCard(
+                      padding: const EdgeInsets.all(AppTokens.spacingLG),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            GlassTextField(
+                              controller: _emailController,
+                              label: 'Email',
+                              prefixIcon: Icons.email,
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Veuillez entrer votre email';
+                                }
+                                if (!RegExp(r'^[\w-]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                  return 'Veuillez entrer un email valide';
+                                }
+                                return null;
+                              },
                             ),
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Veuillez entrer votre email';
-                              }
-                              if (!RegExp(r'^[\w-]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                return 'Veuillez entrer un email valide';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        SizedBox(height: 16),
+                            const SizedBox(height: AppTokens.spacingMD),
 
-                        // Champ mot de passe avec design moderne
-                        Container(
-                          decoration: BoxDecoration(
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(25),
-                                blurRadius: 10,
-                                offset: Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: TextFormField(
-                            controller: _passwordController,
-                            decoration: InputDecoration(
-                              labelText: 'Mot de passe',
-                              prefixIcon: Icon(Icons.lock, color: AppColors.primary),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide(color: AppColors.primary, width: 2),
-                              ),
+                            GlassTextField(
+                              controller: _passwordController,
+                              label: 'Mot de passe',
+                              prefixIcon: Icons.lock,
+                              obscureText: true,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Veuillez entrer votre mot de passe';
+                                }
+                                return null;
+                              },
                             ),
-                            obscureText: true,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Veuillez entrer votre mot de passe';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                        SizedBox(height: 24),
+                            const SizedBox(height: AppTokens.spacingLG),
 
-                        // Bouton de connexion avec gradient et ombres
-                        Container(
-                          width: double.infinity,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(15),
-                            gradient: LinearGradient(
-                              colors: [AppColors.primary, AppColors.secondary],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
+                            GlassButton(
+                              label: 'Se connecter',
+                              onPressed: _isLoading ? null : _authenticate,
+                              variant: GlassButtonVariant.primary,
+                              icon: Icons.login,
+                              isLoading: _isLoading,
+                              width: double.infinity,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withAlpha(100),
-                                blurRadius: 15,
-                                offset: Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _authenticate,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                            ),
-                            child: _isLoading
-                                ? CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                                : Text(
-                                    'Se connecter',
+                            const SizedBox(height: AppTokens.spacingMD),
+
+                            // Divider
+                            Row(
+                              children: [
+                                Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.3))),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: AppTokens.spacingMD),
+                                  child: Text(
+                                    'OU',
                                     style: TextStyle(
-                                      fontSize: 18,
+                                      color: Colors.white.withValues(alpha: 0.7),
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.white,
                                     ),
                                   ),
-                          ),
-                        ),
-                        SizedBox(height: 16),
+                                ),
+                                Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.3))),
+                              ],
+                            ),
+                            const SizedBox(height: AppTokens.spacingMD),
 
-                        // Divider "OU"
-                        Row(
-                          children: [
-                            Expanded(child: Divider()),
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'OU',
+                            _buildGoogleButton(),
+                            const SizedBox(height: AppTokens.spacingLG),
+
+                            TextButton(
+                              onPressed: () => Navigator.pushNamed(context, AppRoutes.register),
+                              child: const Text(
+                                'Pas de compte? S\'inscrire',
                                 style: TextStyle(
-                                  color: Colors.grey[600],
+                                  color: AppColors.accentLight,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                            Expanded(child: Divider()),
+                            TextButton.icon(
+                              onPressed: () => Navigator.pushReplacementNamed(context, AppRoutes.home),
+                              icon: Icon(Icons.arrow_back, size: 16, color: Colors.white.withValues(alpha: 0.6)),
+                              label: Text(
+                                'Retour à l\'accueil',
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14),
+                              ),
+                            ),
                           ],
                         ),
-                        SizedBox(height: 16),
-
-                        // Bouton Google Sign-In avec design moderne
-                        Container(
-                          width: double.infinity,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(25),
-                                blurRadius: 10,
-                                offset: Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: OutlinedButton.icon(
-                            onPressed: _isLoading ? null : _signInWithGoogle,
-                            icon: Image.asset(
-                              'assets/images/logos/google_logo.png',
-                              height: 24,
-                              width: 24,
-                            ),
-                            label: Text(
-                              'Continuer avec Google',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              side: BorderSide(color: Colors.grey[300]!, width: 1.5),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 24),
-
-                        // Lien pour aller vers l'inscription
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, AppRoutes.register);
-                          },
-                          child: Text(
-                            'Pas de compte? S\'inscrire',
-                            style: TextStyle(
-                              color: AppColors.secondary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        
-                        // Bouton retour à l'accueil
-                        TextButton.icon(
-                          onPressed: () {
-                            Navigator.pushReplacementNamed(context, AppRoutes.home);
-                          },
-                          icon: Icon(
-                            Icons.arrow_back,
-                            size: 16,
-                            color: Colors.grey[600],
-                          ),
-                          label: Text(
-                            'Retour à l\'accueil',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final double cx = w / 2;
+    final double cy = h / 2;
+    final double r = w * 0.45;
+
+    // Bleu (haut droit)
+    final bluePaint = Paint()..color = const Color(0xFF4285F4);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      -0.6, 1.8, true, bluePaint,
+    );
+
+    // Vert (bas droit)
+    final greenPaint = Paint()..color = const Color(0xFF34A853);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      1.2, 1.1, true, greenPaint,
+    );
+
+    // Jaune (bas gauche)
+    final yellowPaint = Paint()..color = const Color(0xFFFBBC05);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      2.3, 1.0, true, yellowPaint,
+    );
+
+    // Rouge (haut gauche)
+    final redPaint = Paint()..color = const Color(0xFFEA4335);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: r),
+      3.3, 1.5, true, redPaint,
+    );
+
+    // Cercle blanc interieur
+    final whitePaint = Paint()..color = Colors.white;
+    canvas.drawCircle(Offset(cx, cy), r * 0.55, whitePaint);
+
+    // Barre horizontale bleue (le "G")
+    canvas.drawRect(
+      Rect.fromLTWH(cx, cy - r * 0.15, r * 0.95, r * 0.3),
+      bluePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(cx, cy - r * 0.15, r * 0.5, r * 0.3),
+      whitePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

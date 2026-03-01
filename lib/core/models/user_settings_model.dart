@@ -16,6 +16,8 @@ class UserSettingsModel {
   final double latitude;
   final double longitude;
   final String timezone;
+  final Map<String, int> prayerOffsets; // minutes offset per prayer (fajr, dhuhr, asr, maghrib, isha)
+  final String language; // 'fr', 'ar', 'en', 'es'
 
   UserSettingsModel({
     required this.userId,
@@ -31,6 +33,8 @@ class UserSettingsModel {
     this.latitude = 0.0,
     this.longitude = 0.0,
     this.timezone = 'UTC',
+    this.prayerOffsets = const {},
+    this.language = 'fr',
   });
 
   factory UserSettingsModel.fromJson(Map<String, dynamic> json) {
@@ -52,6 +56,10 @@ class UserSettingsModel {
       latitude: json['latitude'] ?? 0.0,
       longitude: json['longitude'] ?? 0.0,
       timezone: json['timezone'] ?? 'UTC',
+      prayerOffsets: json['prayerOffsets'] != null
+          ? Map<String, int>.from(json['prayerOffsets'])
+          : const {},
+      language: json['language'] ?? 'fr',
     );
   }
 
@@ -70,6 +78,8 @@ class UserSettingsModel {
       'latitude': latitude,
       'longitude': longitude,
       'timezone': timezone,
+      'prayerOffsets': prayerOffsets,
+      'language': language,
     };
   }
 
@@ -87,6 +97,8 @@ class UserSettingsModel {
     double? latitude,
     double? longitude,
     String? timezone,
+    Map<String, int>? prayerOffsets,
+    String? language,
   }) {
     return UserSettingsModel(
       userId: userId ?? this.userId,
@@ -102,6 +114,8 @@ class UserSettingsModel {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       timezone: timezone ?? this.timezone,
+      prayerOffsets: prayerOffsets ?? this.prayerOffsets,
+      language: language ?? this.language,
     );
   }
 }
