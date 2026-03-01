@@ -320,8 +320,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                                   ),
                                   const SizedBox(height: AppTokens.spacingLG),
 
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: [
                                       Text(
                                         'Vous avez déjà un compte ? ',
@@ -329,8 +330,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                                           color: Colors.white.withValues(alpha: 0.7),
                                         ),
                                       ),
-                                      TextButton(
-                                        onPressed: () {
+                                      GestureDetector(
+                                        onTap: () {
                                           Navigator.of(context).pushReplacementNamed('/login');
                                         },
                                         child: const Text(
